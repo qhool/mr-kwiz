@@ -1,0 +1,45 @@
+{
+  "name": "mrkwiz",
+  "version": "1.0.0",
+  "description": "A small anonymous quiz app for measuring relationship/play-style traits.",
+  "type": "module",
+  "main": "src/main.tsx",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "deploy": "wrangler publish",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:status": "supabase status",
+    "supabase:db:push": "supabase db push",
+    "supabase:db:reset": "supabase db reset",
+    "supabase:migration:new": "supabase migration new",
+    "supabase:types": "supabase gen types typescript --local > src/types/database.generated.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.106.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "^1.38.0",
+    "@types/react": "^18.3.23",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.1.0",
+    "supabase": "^2.101.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.1.12",
+    "wrangler": "^4.94.0"
+  },
+  "keywords": [
+    "quiz",
+    "react",
+    "vite",
+    "typescript",
+    "supabase",
+    "cloudflare"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}

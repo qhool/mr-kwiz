@@ -1,0 +1,2 @@
+-- Intentionally empty for now.
+-- Add seed data here when the initial quiz schema exists.
