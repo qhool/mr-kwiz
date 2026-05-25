@@ -8,6 +8,7 @@ import {
     type QuizDefinition,
     type QuizEditPatch,
 } from '../../lib/quiz-definition';
+import { renderAdminSkillPrompt } from '../../lib/admin-skill-prompt';
 
 type AdminQuizResponse = {
     quiz: {
@@ -73,6 +74,29 @@ const QuizEditPage: React.FC = () => {
         void loadDefinition();
     }, [loadDefinition]);
 
+    const handleCopySkillPrompt = async () => {
+        setError(null);
+        setMessage(null);
+
+        if (!definition || !metadata) {
+            setError('Quiz definition is not loaded yet.');
+            return;
+        }
+
+        if (!navigator.clipboard?.writeText) {
+            setError('Clipboard API is not available in this browser context.');
+            return;
+        }
+
+        try {
+            const prompt = renderAdminSkillPrompt(definition, metadata);
+            await navigator.clipboard.writeText(prompt);
+            setMessage('Copied skill prompt to clipboard.');
+        } catch (copyError) {
+            setError(formatError(copyError));
+        }
+    };
+
     const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         setError(null);
@@ -121,6 +145,25 @@ const QuizEditPage: React.FC = () => {
                         ? `${metadata.title} · definition version ${metadata.current_definition_version}`
                         : 'Loading quiz definition...'}
                 </p>
+                <div style={{ marginTop: '1rem' }}>
+                    <button
+                        disabled={isLoading || !definition || !metadata}
+                        onClick={() => {
+                            void handleCopySkillPrompt();
+                        }}
+                        style={{
+                            background: '#6a5032',
+                            border: 'none',
+                            borderRadius: 999,
+                            color: '#f6f0df',
+                            cursor: 'pointer',
+                            padding: '0.75rem 1.25rem',
+                        }}
+                        type="button"
+                    >
+                        Copy LLM Skill Prompt
+                    </button>
+                </div>
             </header>
 
             {error ? (
