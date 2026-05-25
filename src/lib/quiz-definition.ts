@@ -14,67 +14,101 @@ export class QuizEditValidationError extends Error {
     }
 }
 
-export const traitSchema = z.object({
-    id: z.string().min(1),
-    label: z.string().min(1),
-    description: z.string().default(''),
-    low_label: z.string().min(1),
-    high_label: z.string().min(1),
-    display_order: z.number().int().positive(),
-});
-
-export const responseOptionSchema = z.object({
-    id: z.string().min(1),
-    label: z.string().min(1),
-    help_text: z.string().default(''),
-    value: z.number(),
-    display_order: z.number().int().positive(),
-});
-
-export const matrixSchema = z.object({
-    rows: z.number().int().positive(),
-    cols: z.number().int().positive(),
-    layout: z.literal('row_major'),
-    values: z.array(z.number()),
-});
-
-export const scoringConfigSchema = z
+export const traitSchema = z
     .object({
-        prior_info: z.number().positive().default(1),
+        id: z.string().min(1).meta({ description: 'Stable machine-readable trait identifier.' }),
+        label: z.string().min(1).meta({ description: 'Human-facing trait label.' }),
+        description: z.string().default('').meta({ description: 'Optional explanatory text for the trait.' }),
+        low_label: z.string().min(1).meta({ description: 'Label shown for the low end of the trait scale.' }),
+        high_label: z.string().min(1).meta({ description: 'Label shown for the high end of the trait scale.' }),
+        display_order: z.number().int().positive().meta({ description: '1-based display order for rendering.' }),
     })
-    .passthrough();
+    .meta({
+        description: 'One measured trait axis in the quiz definition.',
+        docs: {
+            notes: ['Trait order defines the matrix column order for every question.'],
+        },
+    });
+
+export const responseOptionSchema = z
+    .object({
+        id: z.string().min(1).meta({ description: 'Stable machine-readable response identifier.' }),
+        label: z.string().min(1).meta({ description: 'Human-facing answer label.' }),
+        help_text: z.string().default('').meta({ description: 'Optional helper text shown with the response.' }),
+        value: z.number().meta({ description: 'Response value preserved in the definition payload.' }),
+        display_order: z.number().int().positive().meta({ description: '1-based display order within the question.' }),
+    })
+    .meta({
+        description: 'A single answer choice for a single-choice question.',
+        docs: {
+            notes: ['Response order defines the row order used by the question matrices.'],
+        },
+    });
+
+export const matrixSchema = z
+    .object({
+        rows: z.number().int().positive().meta({ description: 'Number of matrix rows.' }),
+        cols: z.number().int().positive().meta({ description: 'Number of matrix columns.' }),
+        layout: z.literal('row_major').meta({ description: 'Matrix storage layout. Only row_major is accepted in v1.' }),
+        values: z.array(z.number()).meta({ description: 'Flattened matrix values in row-major order.' }),
+    })
+    .meta({
+        description: 'A flattened numeric matrix used for per-response per-trait weights.',
+        docs: {
+            notes: ['Indexing rule: values[response_index * trait_count + trait_index].'],
+        },
+    });
+export const scoringConfigSchema = z
+    .looseObject({
+        prior_info: z.number().positive().default(1).meta({ description: 'Default prior information value used by adaptive scoring.' }),
+    })
+    .meta({
+        description: 'Scoring-related configuration for the whole quiz definition.',
+    });
 
 export const displayConfigSchema = z
-    .object({
-        intro_markdown: z.string().optional(),
-        completion_markdown: z.string().optional(),
-        result_scale_min: z.number().optional(),
-        result_scale_max: z.number().optional(),
+    .looseObject({
+        intro_markdown: z.string().optional().meta({ description: 'Markdown shown before the quiz starts.' }),
+        completion_markdown: z.string().optional().meta({ description: 'Markdown shown after the quiz is completed.' }),
+        result_scale_min: z.number().optional().meta({ description: 'Optional lower bound for result display scaling.' }),
+        result_scale_max: z.number().optional().meta({ description: 'Optional upper bound for result display scaling.' }),
     })
-    .passthrough();
+    .meta({
+        description: 'Display-oriented configuration for quiz presentation.',
+    });
 
-export const questionSchema = z.object({
-    id: z.string().min(1),
-    kind: z.literal('single_choice'),
-    prompt: z.string().min(1),
-    help_text: z.string().default(''),
-    responses: z.array(responseOptionSchema).min(2),
-    score_matrix: matrixSchema,
-    information_matrix: matrixSchema,
-    tags: z.array(z.string()).default([]),
-    active: z.boolean().default(true),
-    adaptive_eligible: z.boolean().default(true),
-    display_order: z.number().int().positive(),
-});
+export const questionSchema = z
+    .object({
+        id: z.string().min(1).meta({ description: 'Stable machine-readable question identifier.' }),
+        kind: z.literal('single_choice').meta({ description: 'Question kind. Only single_choice is accepted in v1.' }),
+        prompt: z.string().min(1).meta({ description: 'Question prompt shown to the participant.' }),
+        help_text: z.string().default('').meta({ description: 'Optional helper text shown with the question.' }),
+        responses: z.array(responseOptionSchema).min(2).meta({ description: 'Ordered response options for the question.' }),
+        score_matrix: matrixSchema,
+        information_matrix: matrixSchema,
+        tags: z.array(z.string()).default([]).meta({ description: 'Optional freeform tags for filtering or tooling.' }),
+        active: z.boolean().default(true).meta({ description: 'Whether the question is active in the definition.' }),
+        adaptive_eligible: z.boolean().default(true).meta({ description: 'Whether the question may be used by adaptive selection logic.' }),
+        display_order: z.number().int().positive().meta({ description: '1-based display order within the quiz.' }),
+    })
+    .meta({
+        description: 'A single v1 quiz question.',
+        docs: {
+            notes: [
+                'Question responses, score_matrix rows, and information_matrix rows must stay aligned.',
+                'score_matrix and information_matrix both use the Matrix indexing rule.',
+            ],
+        },
+    });
 
 export const quizDefinitionSchema = z
     .object({
-        schema_version: z.number().int().positive(),
-        definition_version: z.number().int().positive(),
-        title: z.string().min(1),
-        description: z.string().default(''),
-        traits: z.array(traitSchema).min(1),
-        questions: z.array(questionSchema).min(1),
+        schema_version: z.number().int().positive().meta({ description: 'Quiz definition schema version.' }),
+        definition_version: z.number().int().positive().meta({ description: 'Monotonic version for the current definition snapshot.' }),
+        title: z.string().min(1).meta({ description: 'Human-facing quiz title.' }),
+        description: z.string().default('').meta({ description: 'Optional quiz description.' }),
+        traits: z.array(traitSchema).min(1).meta({ description: 'Ordered trait definitions used by all questions.' }),
+        questions: z.array(questionSchema).min(1).meta({ description: 'Ordered question definitions in the quiz.' }),
         scoring_config: scoringConfigSchema,
         display_config: displayConfigSchema,
     })
@@ -123,16 +157,27 @@ export const quizDefinitionSchema = z
                 }
             }
         }
+    })
+    .meta({
+        description: 'The full current quiz definition stored and edited by the admin flow.',
+        docs: {
+            crossFieldRules: [
+                'Trait IDs must be unique.',
+                'Question IDs must be unique.',
+                'Response IDs must be unique within each question.',
+                'Each question matrix shape must match responses x traits.',
+                'Each question matrix values length must equal rows * cols.',
+            ],
+        },
     });
 
 export const createQuestionSchema = z
-    .object({
+    .strictObject({
         op: z.literal('create_question'),
         question: questionSchema,
         before_question_id: z.string().min(1).optional(),
         after_question_id: z.string().min(1).optional(),
     })
-    .strict()
     .superRefine((operation, ctx) => {
         if (operation.before_question_id && operation.after_question_id) {
             ctx.addIssue({
@@ -140,40 +185,63 @@ export const createQuestionSchema = z
                 message: 'create_question cannot specify both before_question_id and after_question_id.',
             });
         }
+    })
+    .meta({
+        description: 'Add a new question to the definition.',
+        docs: {
+            crossFieldRules: ['Cannot specify both before_question_id and after_question_id in the same operation.'],
+        },
     });
 
 export const replaceQuestionSchema = z
-    .object({
+    .strictObject({
         op: z.literal('replace_question'),
         question_id: z.string().min(1),
         old_question_hash: z.string().length(64),
         question: questionSchema,
     })
-    .strict();
+    .meta({
+        description: 'Replace an existing question using optimistic concurrency on the old hash.',
+        docs: {
+            crossFieldRules: ['question.id must match question_id when applying the replacement.'],
+        },
+    });
 
 export const deleteQuestionSchema = z
-    .object({
+    .strictObject({
         op: z.literal('delete_question'),
         question_id: z.string().min(1),
         old_question_hash: z.string().length(64),
     })
-    .strict();
+    .meta({
+        description: 'Delete an existing question using optimistic concurrency on the old hash.',
+    });
 
 export const reorderQuestionsSchema = z
-    .object({
+    .strictObject({
         op: z.literal('reorder_questions'),
         question_ids: z.array(z.string().min(1)).min(1),
     })
-    .strict();
+    .meta({
+        description: 'Reorder the existing questions by supplying the full ordered question id set.',
+        docs: {
+            crossFieldRules: ['question_ids must contain exactly the current set of question IDs with no duplicates.'],
+        },
+    });
 
 export const updateQuizMetadataSchema = z
-    .object({
+    .strictObject({
         op: z.literal('update_quiz_metadata'),
         title: z.string().min(1).optional(),
         description: z.string().optional(),
         display_config: displayConfigSchema.optional(),
     })
-    .strict();
+    .meta({
+        description: 'Update top-level quiz metadata without changing traits or questions.',
+        docs: {
+            notes: ['This operation only affects title, description, and display_config.'],
+        },
+    });
 
 export const quizEditOperationSchema = z.union([
     createQuestionSchema,
@@ -181,14 +249,21 @@ export const quizEditOperationSchema = z.union([
     deleteQuestionSchema,
     reorderQuestionsSchema,
     updateQuizMetadataSchema,
-]);
+]).meta({
+    description: 'Union of all accepted quiz edit operations.',
+});
 
 export const quizEditPatchSchema = z
-    .object({
-        base_definition_version: z.number().int().positive(),
-        operations: z.array(quizEditOperationSchema).min(1),
+    .strictObject({
+        base_definition_version: z.number().int().positive().meta({ description: 'Definition version the patch was authored against.' }),
+        operations: z.array(quizEditOperationSchema).min(1).meta({ description: 'Ordered list of edit operations to apply.' }),
     })
-    .strict();
+    .meta({
+        description: 'Patch envelope accepted by the admin edit API.',
+        docs: {
+            crossFieldRules: ['base_definition_version must match the current stored definition version before the patch is applied.'],
+        },
+    });
 
 export type Trait = z.infer<typeof traitSchema>;
 export type ResponseOption = z.infer<typeof responseOptionSchema>;
