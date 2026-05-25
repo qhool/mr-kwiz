@@ -107,8 +107,8 @@ export const quizDefinitionSchema = z
         definition_version: z.number().int().positive().meta({ description: 'Monotonic version for the current definition snapshot.' }),
         title: z.string().min(1).meta({ description: 'Human-facing quiz title.' }),
         description: z.string().default('').meta({ description: 'Optional quiz description.' }),
-        traits: z.array(traitSchema).min(1).meta({ description: 'Ordered trait definitions used by all questions.' }),
-        questions: z.array(questionSchema).min(1).meta({ description: 'Ordered question definitions in the quiz.' }),
+        traits: z.array(traitSchema).meta({ description: 'Ordered trait definitions used by all questions.' }),
+        questions: z.array(questionSchema).meta({ description: 'Ordered question definitions in the quiz.' }),
         scoring_config: scoringConfigSchema,
         display_config: displayConfigSchema,
     })
@@ -124,6 +124,13 @@ export const quizDefinitionSchema = z
         }
 
         const traitCount = definition.traits.length;
+
+        if (definition.questions.length > 0 && traitCount === 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Questions cannot be defined until at least one trait exists.',
+            });
+        }
 
         for (const question of definition.questions) {
             const responseIds = question.responses.map((response) => response.id);
@@ -162,8 +169,10 @@ export const quizDefinitionSchema = z
         description: 'The full current quiz definition stored and edited by the admin flow.',
         docs: {
             crossFieldRules: [
+                'Empty quizzes are valid initial definitions.',
                 'Trait IDs must be unique.',
                 'Question IDs must be unique.',
+                'Questions cannot be defined until at least one trait exists.',
                 'Response IDs must be unique within each question.',
                 'Each question matrix shape must match responses x traits.',
                 'Each question matrix values length must equal rows * cols.',
@@ -234,12 +243,89 @@ export const updateQuizMetadataSchema = z
         op: z.literal('update_quiz_metadata'),
         title: z.string().min(1).optional(),
         description: z.string().optional(),
-        display_config: displayConfigSchema.optional(),
     })
     .meta({
         description: 'Update top-level quiz metadata without changing traits or questions.',
         docs: {
-            notes: ['This operation only affects title, description, and display_config.'],
+            notes: ['This operation only affects title and description.'],
+        },
+    });
+
+export const replaceDisplayConfigSchema = z
+    .strictObject({
+        op: z.literal('replace_display_config'),
+        display_config: displayConfigSchema,
+    })
+    .meta({
+        description: 'Replace the entire display_config object.',
+        docs: {
+            notes: ['This operation replaces the whole display_config object.'],
+        },
+    });
+
+export const replaceScoringConfigSchema = z
+    .strictObject({
+        op: z.literal('replace_scoring_config'),
+        scoring_config: scoringConfigSchema,
+    })
+    .meta({
+        description: 'Replace the entire scoring_config object.',
+        docs: {
+            notes: [
+                'This operation replaces the whole scoring_config object.',
+                'It does not rewrite question matrices.',
+            ],
+        },
+    });
+
+export const setTraitsSchema = z
+    .strictObject({
+        op: z.literal('set_traits'),
+        traits: z.array(traitSchema).meta({ description: 'Full replacement trait list for initial setup.' }),
+    })
+    .meta({
+        description: 'Replace the full trait list during initial setup.',
+        docs: {
+            crossFieldRules: [
+                'Allowed only when questions.length === 0.',
+                'Trait order defines future matrix column order.',
+            ],
+        },
+    });
+
+export const updateTraitTextSchema = z
+    .strictObject({
+        op: z.literal('update_trait_text'),
+        trait_id: z.string().min(1).meta({ description: 'Trait id to update in place.' }),
+        label: z.string().min(1).optional(),
+        description: z.string().optional(),
+        low_label: z.string().min(1).optional(),
+        high_label: z.string().min(1).optional(),
+    })
+    .meta({
+        description: 'Update only trait labels and descriptions without changing trait structure.',
+        docs: {
+            crossFieldRules: [
+                'Allowed before or after questions exist.',
+                'Must not change trait id or trait order.',
+                'Does not require matrix migration.',
+            ],
+        },
+    });
+
+export const reorderTraitsSchema = z
+    .strictObject({
+        op: z.literal('reorder_traits'),
+        trait_ids: z.array(z.string().min(1)).meta({ description: 'Full ordered trait id list.' }),
+    })
+    .meta({
+        description: 'Reorder the existing trait list before any questions exist.',
+        docs: {
+            crossFieldRules: [
+                'Allowed only when questions.length === 0.',
+                'trait_ids must contain exactly the current trait IDs.',
+                'Changes future matrix column order.',
+            ],
         },
     });
 
@@ -249,6 +335,11 @@ export const quizEditOperationSchema = z.union([
     deleteQuestionSchema,
     reorderQuestionsSchema,
     updateQuizMetadataSchema,
+    replaceDisplayConfigSchema,
+    replaceScoringConfigSchema,
+    setTraitsSchema,
+    updateTraitTextSchema,
+    reorderTraitsSchema,
 ]).meta({
     description: 'Union of all accepted quiz edit operations.',
 });
@@ -272,8 +363,27 @@ export type Question = z.infer<typeof questionSchema>;
 export type ScoringConfig = z.infer<typeof scoringConfigSchema>;
 export type DisplayConfig = z.infer<typeof displayConfigSchema>;
 export type QuizDefinition = z.infer<typeof quizDefinitionSchema>;
+export type ReplaceDisplayConfig = z.infer<typeof replaceDisplayConfigSchema>;
+export type ReplaceScoringConfig = z.infer<typeof replaceScoringConfigSchema>;
+export type SetTraits = z.infer<typeof setTraitsSchema>;
+export type UpdateTraitText = z.infer<typeof updateTraitTextSchema>;
+export type ReorderTraits = z.infer<typeof reorderTraitsSchema>;
+export type TopLevelQuizOperation =
+    | z.infer<typeof updateQuizMetadataSchema>
+    | ReplaceDisplayConfig
+    | ReplaceScoringConfig
+    | SetTraits
+    | UpdateTraitText
+    | ReorderTraits;
 export type QuizEditPatch = z.infer<typeof quizEditPatchSchema>;
 export type QuizEditOperation = z.infer<typeof quizEditOperationSchema>;
+
+const normalizeTraitOrdering = (traits: Trait[]): Trait[] => {
+    return traits.map((trait, index) => ({
+        ...trait,
+        display_order: index + 1,
+    }));
+};
 
 const normalizeQuestionOrdering = (questions: Question[]): Question[] => {
     return questions.map((question, index) => ({
@@ -305,6 +415,10 @@ export const hashQuestion = async (question: Question): Promise<string> => {
 };
 
 export const assertStandaloneQuestion = (question: Question, traitCount: number): Question => {
+    if (traitCount === 0) {
+        throw new QuizEditValidationError('Questions cannot be defined until at least one trait exists.');
+    }
+
     const parsedQuestion = questionSchema.parse(question);
     const expectedRows = parsedQuestion.responses.length;
     const expectedCols = traitCount;
@@ -330,61 +444,13 @@ export const createDefaultQuizDefinition = (title: string, description = ''): Qu
         definition_version: 1,
         title,
         description,
-        traits: [
-            {
-                id: 'structure_appetite',
-                label: 'Structure Appetite',
-                description: 'How much predictable structure and planning a person prefers.',
-                low_label: 'Spontaneous',
-                high_label: 'Structured',
-                display_order: 1,
-            },
-        ],
-        questions: [
-            {
-                id: 'starter_structure_question',
-                kind: 'single_choice',
-                prompt: 'When starting something together, what feels best?',
-                help_text: 'Replace this starter question with your real quiz content.',
-                responses: [
-                    {
-                        id: 'starter_structure_loose',
-                        label: 'Figure it out as we go',
-                        help_text: '',
-                        value: -1,
-                        display_order: 1,
-                    },
-                    {
-                        id: 'starter_structure_planned',
-                        label: 'Have a clear plan first',
-                        help_text: '',
-                        value: 1,
-                        display_order: 2,
-                    },
-                ],
-                score_matrix: {
-                    rows: 2,
-                    cols: 1,
-                    layout: 'row_major',
-                    values: [-1, 1],
-                },
-                information_matrix: {
-                    rows: 2,
-                    cols: 1,
-                    layout: 'row_major',
-                    values: [1, 1],
-                },
-                tags: ['starter'],
-                active: true,
-                adaptive_eligible: true,
-                display_order: 1,
-            },
-        ],
+        traits: [],
+        questions: [],
         scoring_config: {
             prior_info: 1,
         },
         display_config: {
-            intro_markdown: 'Replace this starter definition with your real quiz.',
+            intro_markdown: 'Configure traits before creating questions.',
         },
     };
 
@@ -482,10 +548,6 @@ export const applyQuizEditPatch = async (
                 nextDefinition.questions = normalizeQuestionOrdering(
                     nextDefinition.questions.filter((question) => question.id !== operation.question_id)
                 );
-
-                if (nextDefinition.questions.length === 0) {
-                    throw new QuizEditValidationError('A quiz definition must contain at least one question.');
-                }
                 break;
             }
 
@@ -515,7 +577,85 @@ export const applyQuizEditPatch = async (
                     ...nextDefinition,
                     title: operation.title ?? nextDefinition.title,
                     description: operation.description ?? nextDefinition.description,
-                    display_config: operation.display_config ?? nextDefinition.display_config,
+                };
+                break;
+            }
+
+            case 'replace_display_config': {
+                nextDefinition = {
+                    ...nextDefinition,
+                    display_config: operation.display_config,
+                };
+                break;
+            }
+
+            case 'replace_scoring_config': {
+                nextDefinition = {
+                    ...nextDefinition,
+                    scoring_config: operation.scoring_config,
+                };
+                break;
+            }
+
+            case 'set_traits': {
+                if (nextDefinition.questions.length > 0) {
+                    throw new QuizEditValidationError('Traits cannot be replaced after questions exist.');
+                }
+
+                nextDefinition = {
+                    ...nextDefinition,
+                    traits: normalizeTraitOrdering(operation.traits),
+                };
+                break;
+            }
+
+            case 'update_trait_text': {
+                const traitIndex = nextDefinition.traits.findIndex((trait) => trait.id === operation.trait_id);
+                if (traitIndex === -1) {
+                    throw new QuizEditValidationError(`Trait ${operation.trait_id} does not exist.`);
+                }
+
+                const traits = [...nextDefinition.traits];
+                const currentTrait = traits[traitIndex];
+                traits[traitIndex] = {
+                    ...currentTrait,
+                    label: operation.label ?? currentTrait.label,
+                    description: operation.description ?? currentTrait.description,
+                    low_label: operation.low_label ?? currentTrait.low_label,
+                    high_label: operation.high_label ?? currentTrait.high_label,
+                };
+
+                nextDefinition = {
+                    ...nextDefinition,
+                    traits,
+                };
+                break;
+            }
+
+            case 'reorder_traits': {
+                if (nextDefinition.questions.length > 0) {
+                    throw new QuizEditValidationError('Traits cannot be reordered after questions exist.');
+                }
+
+                const currentIds = nextDefinition.traits.map((trait) => trait.id);
+                const requestedIds = operation.trait_ids;
+
+                if (
+                    currentIds.length !== requestedIds.length ||
+                    !uniqueValues(requestedIds) ||
+                    currentIds.some((traitId) => !requestedIds.includes(traitId))
+                ) {
+                    throw new QuizEditValidationError(
+                        'reorder_traits must contain exactly the current set of trait IDs.'
+                    );
+                }
+
+                const lookup = new Map(nextDefinition.traits.map((trait) => [trait.id, trait]));
+                nextDefinition = {
+                    ...nextDefinition,
+                    traits: normalizeTraitOrdering(
+                        requestedIds.map((traitId) => lookup.get(traitId) as Trait)
+                    ),
                 };
                 break;
             }

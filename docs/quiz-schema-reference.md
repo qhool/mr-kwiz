@@ -11,11 +11,11 @@ The full current quiz definition stored and edited by the admin flow.
 | definition_version | number        | yes      | integer, > 0 | Monotonic version for the current definition snapshot.       |
 | description        | string        | no       | default      | Optional quiz description.                                   |
 | display_config     | DisplayConfig | yes      |              | Display-oriented configuration for quiz presentation.        |
-| questions          | Question[]    | yes      | min length 1 | Ordered question definitions in the quiz.                    |
+| questions          | Question[]    | yes      |              | Ordered question definitions in the quiz.                    |
 | schema_version     | number        | yes      | integer, > 0 | Quiz definition schema version.                              |
 | scoring_config     | ScoringConfig | yes      |              | Scoring-related configuration for the whole quiz definition. |
 | title              | string        | yes      | min length 1 | Human-facing quiz title.                                     |
-| traits             | Trait[]       | yes      | min length 1 | Ordered trait definitions used by all questions.             |
+| traits             | Trait[]       | yes      |              | Ordered trait definitions used by all questions.             |
 
 ## QuizEditPatch
 
@@ -71,13 +71,18 @@ Notes:
 
 Union of all accepted quiz edit operations.
 
-| op                     | schema             | notes                                                                                                                                    |
-| ---------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| "create_question"      | CreateQuestion     | Add a new question to the definition.                                                                                                    |
-| "delete_question"      | DeleteQuestion     | Delete an existing question using optimistic concurrency on the old hash.                                                                |
-| "reorder_questions"    | ReorderQuestions   | Reorder the existing questions by supplying the full ordered question id set.                                                            |
-| "replace_question"     | ReplaceQuestion    | Replace an existing question using optimistic concurrency on the old hash.                                                               |
-| "update_quiz_metadata" | UpdateQuizMetadata | Update top-level quiz metadata without changing traits or questions. This operation only affects title, description, and display_config. |
+| op                       | schema               | notes                                                                                                                                     |
+| ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| "create_question"        | CreateQuestion       | Add a new question to the definition.                                                                                                     |
+| "delete_question"        | DeleteQuestion       | Delete an existing question using optimistic concurrency on the old hash.                                                                 |
+| "reorder_questions"      | ReorderQuestions     | Reorder the existing questions by supplying the full ordered question id set.                                                             |
+| "reorder_traits"         | ReorderTraits        | Reorder the existing trait list before any questions exist.                                                                               |
+| "replace_display_config" | ReplaceDisplayConfig | Replace the entire display_config object. This operation replaces the whole display_config object.                                        |
+| "replace_question"       | ReplaceQuestion      | Replace an existing question using optimistic concurrency on the old hash.                                                                |
+| "replace_scoring_config" | ReplaceScoringConfig | Replace the entire scoring_config object. This operation replaces the whole scoring_config object. It does not rewrite question matrices. |
+| "set_traits"             | SetTraits            | Replace the full trait list during initial setup.                                                                                         |
+| "update_quiz_metadata"   | UpdateQuizMetadata   | Update top-level quiz metadata without changing traits or questions. This operation only affects title and description.                   |
+| "update_trait_text"      | UpdateTraitText      | Update only trait labels and descriptions without changing trait structure.                                                               |
 
 ## Trait
 
@@ -139,6 +144,27 @@ Reorder the existing questions by supplying the full ordered question id set.
 | op           | "reorder_questions" | yes      |              |       |
 | question_ids | string[]            | yes      | min length 1 |       |
 
+## ReorderTraits
+
+Reorder the existing trait list before any questions exist.
+
+| field     | type             | required | constraints | notes                       |
+| --------- | ---------------- | -------- | ----------- | --------------------------- |
+| op        | "reorder_traits" | yes      |             |                             |
+| trait_ids | string[]         | yes      |             | Full ordered trait id list. |
+
+## ReplaceDisplayConfig
+
+Replace the entire display_config object.
+
+| field          | type                     | required | constraints | notes                                                 |
+| -------------- | ------------------------ | -------- | ----------- | ----------------------------------------------------- |
+| display_config | DisplayConfig            | yes      |             | Display-oriented configuration for quiz presentation. |
+| op             | "replace_display_config" | yes      |             |                                                       |
+
+Notes:
+- This operation replaces the whole display_config object.
+
 ## ReplaceQuestion
 
 Replace an existing question using optimistic concurrency on the old hash.
@@ -150,19 +176,53 @@ Replace an existing question using optimistic concurrency on the old hash.
 | question          | Question           | yes      |              | A single v1 quiz question. Question responses, score_matrix rows, and information_matrix rows must stay aligned. score_matrix and information_matrix both use the Matrix indexing rule. |
 | question_id       | string             | yes      | min length 1 |                                                                                                                                                                                         |
 
+## ReplaceScoringConfig
+
+Replace the entire scoring_config object.
+
+| field          | type                     | required | constraints | notes                                                        |
+| -------------- | ------------------------ | -------- | ----------- | ------------------------------------------------------------ |
+| op             | "replace_scoring_config" | yes      |             |                                                              |
+| scoring_config | ScoringConfig            | yes      |             | Scoring-related configuration for the whole quiz definition. |
+
+Notes:
+- This operation replaces the whole scoring_config object.
+- It does not rewrite question matrices.
+
+## SetTraits
+
+Replace the full trait list during initial setup.
+
+| field  | type         | required | constraints | notes                                          |
+| ------ | ------------ | -------- | ----------- | ---------------------------------------------- |
+| op     | "set_traits" | yes      |             |                                                |
+| traits | Trait[]      | yes      |             | Full replacement trait list for initial setup. |
+
 ## UpdateQuizMetadata
 
 Update top-level quiz metadata without changing traits or questions.
 
-| field          | type                   | required | constraints  | notes |
-| -------------- | ---------------------- | -------- | ------------ | ----- |
-| description    | string                 | no       |              |       |
-| display_config | DisplayConfig          | no       |              |       |
-| op             | "update_quiz_metadata" | yes      |              |       |
-| title          | string                 | no       | min length 1 |       |
+| field       | type                   | required | constraints  | notes |
+| ----------- | ---------------------- | -------- | ------------ | ----- |
+| description | string                 | no       |              |       |
+| op          | "update_quiz_metadata" | yes      |              |       |
+| title       | string                 | no       | min length 1 |       |
 
 Notes:
-- This operation only affects title, description, and display_config.
+- This operation only affects title and description.
+
+## UpdateTraitText
+
+Update only trait labels and descriptions without changing trait structure.
+
+| field       | type                | required | constraints  | notes                        |
+| ----------- | ------------------- | -------- | ------------ | ---------------------------- |
+| description | string              | no       |              |                              |
+| high_label  | string              | no       | min length 1 |                              |
+| label       | string              | no       | min length 1 |                              |
+| low_label   | string              | no       | min length 1 |                              |
+| op          | "update_trait_text" | yes      |              |                              |
+| trait_id    | string              | yes      | min length 1 | Trait id to update in place. |
 
 ## ResponseOption
 
@@ -184,9 +244,19 @@ Notes:
 - CreateQuestion: Cannot specify both before_question_id and after_question_id in the same operation.
 - QuizDefinition: Each question matrix shape must match responses x traits.
 - QuizDefinition: Each question matrix values length must equal rows * cols.
+- QuizDefinition: Empty quizzes are valid initial definitions.
 - QuizDefinition: Question IDs must be unique.
+- QuizDefinition: Questions cannot be defined until at least one trait exists.
 - QuizDefinition: Response IDs must be unique within each question.
 - QuizDefinition: Trait IDs must be unique.
 - QuizEditPatch: base_definition_version must match the current stored definition version before the patch is applied.
 - ReorderQuestions: question_ids must contain exactly the current set of question IDs with no duplicates.
+- ReorderTraits: Allowed only when questions.length === 0.
+- ReorderTraits: Changes future matrix column order.
+- ReorderTraits: trait_ids must contain exactly the current trait IDs.
 - ReplaceQuestion: question.id must match question_id when applying the replacement.
+- SetTraits: Allowed only when questions.length === 0.
+- SetTraits: Trait order defines future matrix column order.
+- UpdateTraitText: Allowed before or after questions exist.
+- UpdateTraitText: Does not require matrix migration.
+- UpdateTraitText: Must not change trait id or trait order.
