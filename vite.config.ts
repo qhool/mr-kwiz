@@ -104,6 +104,8 @@ export default defineConfig({
     open: true,
     watch: {
       ignored: ['**/.wrangler/**'],
+      usePolling: true,
+      interval: 300,
     },
   },
   build: {

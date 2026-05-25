@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import HomePage from './pages/index';
 import QuizEditPage from './pages/admin/QuizEdit';
+import QuizPreviewPage from './pages/admin/QuizPreview';
 
 const App: React.FC = () => {
   return (
@@ -9,6 +10,7 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/admin/:adminKey/edit" element={<QuizEditPage />} />
+        <Route path="/admin/:adminKey/preview" element={<QuizPreviewPage />} />
       </Routes>
     </BrowserRouter>
   );

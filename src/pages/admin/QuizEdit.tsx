@@ -1,78 +1,27 @@
 import React from 'react';
-import { useParams } from 'react-router-dom';
-import { ZodError } from 'zod';
+import { Link, useParams } from 'react-router-dom';
 
 import {
-    quizDefinitionSchema,
     quizEditPatchSchema,
-    type QuizDefinition,
     type QuizEditPatch,
 } from '../../lib/quiz-definition';
 import { renderAdminSkillPrompt } from '../../lib/admin-skill-prompt';
-
-type AdminQuizResponse = {
-    quiz: {
-        current_definition_version: number;
-        description: string;
-        id: string;
-        title: string;
-    };
-    definition: QuizDefinition;
-};
-
-const formatError = (error: unknown): string => {
-    if (error instanceof ZodError) {
-        return error.issues.map((issue) => issue.message).join('\n');
-    }
-
-    if (error instanceof Error) {
-        return error.message;
-    }
-
-    return 'Unknown error.';
-};
+import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 
 const QuizEditPage: React.FC = () => {
     const { adminKey } = useParams<{ adminKey: string }>();
-    const [definition, setDefinition] = React.useState<QuizDefinition | null>(null);
-    const [metadata, setMetadata] = React.useState<AdminQuizResponse['quiz'] | null>(null);
+    const { definition, error, isLoading, metadata, setDefinition, setError, setMetadata } = useAdminQuizDefinition(adminKey);
     const [patchText, setPatchText] = React.useState('');
-    const [error, setError] = React.useState<string | null>(null);
     const [message, setMessage] = React.useState<string | null>(null);
-    const [isLoading, setIsLoading] = React.useState(true);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
-    const loadDefinition = React.useCallback(async () => {
-        if (!adminKey) {
-            setError('Missing admin key.');
-            setIsLoading(false);
-            return;
+    const formatError = (submitError: unknown): string => {
+        if (submitError instanceof Error) {
+            return submitError.message;
         }
 
-        setIsLoading(true);
-        setError(null);
-
-        try {
-            const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/edit`);
-            const body = (await response.json()) as Partial<AdminQuizResponse> & { error?: string };
-
-            if (!response.ok) {
-                throw new Error(body.error ?? 'Failed to load quiz definition.');
-            }
-
-            const parsedDefinition = quizDefinitionSchema.parse(body.definition);
-            setDefinition(parsedDefinition);
-            setMetadata(body.quiz as AdminQuizResponse['quiz']);
-        } catch (loadError) {
-            setError(formatError(loadError));
-        } finally {
-            setIsLoading(false);
-        }
-    }, [adminKey]);
-
-    React.useEffect(() => {
-        void loadDefinition();
-    }, [loadDefinition]);
+        return 'Unknown error.';
+    };
 
     const handleCopySkillPrompt = async () => {
         setError(null);
@@ -145,7 +94,7 @@ const QuizEditPage: React.FC = () => {
                         ? `${metadata.title} · definition version ${metadata.current_definition_version}`
                         : 'Loading quiz definition...'}
                 </p>
-                <div style={{ marginTop: '1rem' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
                     <button
                         disabled={isLoading || !definition || !metadata}
                         onClick={() => {
@@ -163,6 +112,22 @@ const QuizEditPage: React.FC = () => {
                     >
                         Copy LLM Skill Prompt
                     </button>
+                    {adminKey ? (
+                        <Link
+                            style={{
+                                alignItems: 'center',
+                                background: '#4d3b22',
+                                borderRadius: 999,
+                                color: '#f6f0df',
+                                display: 'inline-flex',
+                                padding: '0.75rem 1.25rem',
+                                textDecoration: 'none',
+                            }}
+                            to={`/admin/${encodeURIComponent(adminKey)}/preview`}
+                        >
+                            Open Preview
+                        </Link>
+                    ) : null}
                 </div>
             </header>
 
