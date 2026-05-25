@@ -240,6 +240,23 @@ function renderNotes(schema: AnySchema): string {
     return notes.join(' ');
 }
 
+function renderTable(headers: string[], rows: string[][]): string[] {
+    const widths = headers.map((header, index) => {
+        const rowWidth = Math.max(...rows.map((row) => row[index]?.length ?? 0), 0);
+        return Math.max(header.length, rowWidth);
+    });
+
+    const formatRow = (cells: string[]) => {
+        return `| ${cells
+            .map((cell, index) => cell.padEnd(widths[index], ' '))
+            .join(' | ')} |`;
+    };
+
+    const separator = `| ${widths.map((width) => '-'.repeat(width)).join(' | ')} |`;
+
+    return [formatRow(headers), separator, ...rows.map((row) => formatRow(row))];
+}
+
 function renderObjectSection(sectionName: string, schema: z.ZodObject): string[] {
     const lines = [`## ${sectionName}`];
     const meta = getSchemaMeta(schema);
@@ -248,7 +265,7 @@ function renderObjectSection(sectionName: string, schema: z.ZodObject): string[]
         lines.push('', meta.description);
     }
 
-    lines.push('', '| field | type | required | constraints | notes |', '| --- | --- | --- | --- | --- |');
+    const rows: string[][] = [];
 
     const fieldNames = Object.keys(schema.shape).sort((left, right) => left.localeCompare(right));
     for (const fieldName of fieldNames) {
@@ -256,10 +273,16 @@ function renderObjectSection(sectionName: string, schema: z.ZodObject): string[]
         const fieldInfo = deriveFieldInfo(fieldSchema);
         const fieldNotes = renderNotes(fieldSchema);
 
-        lines.push(
-            `| ${fieldName} | ${renderType(fieldInfo.unwrapped)} | ${fieldInfo.required ? 'yes' : 'no'} | ${fieldInfo.constraints.join(', ')} | ${fieldNotes} |`
-        );
+        rows.push([
+            fieldName,
+            renderType(fieldInfo.unwrapped),
+            fieldInfo.required ? 'yes' : 'no',
+            fieldInfo.constraints.join(', '),
+            fieldNotes,
+        ]);
     }
+
+    lines.push('', ...renderTable(['field', 'type', 'required', 'constraints', 'notes'], rows));
 
     if ((meta.docs?.notes ?? []).length > 0) {
         lines.push('', 'Notes:');
@@ -295,10 +318,13 @@ function renderUnionSection(sectionName: string, schema: z.ZodUnion): string[] {
         })
         .sort((left, right) => left.op.localeCompare(right.op));
 
-    lines.push('', '| op | schema | notes |', '| --- | --- | --- |');
-    for (const row of rows) {
-        lines.push(`| ${row.op} | ${row.target} | ${row.notes} |`);
-    }
+    lines.push(
+        '',
+        ...renderTable(
+            ['op', 'schema', 'notes'],
+            rows.map((row) => [row.op, row.target, row.notes])
+        )
+    );
 
     return lines;
 }
