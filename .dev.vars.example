@@ -1,0 +1,6 @@
+# Copy to .dev.vars for local Cloudflare development.
+# Use the values from `npm run supabase:status` for the local Supabase stack.
+
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=replace-with-local-supabase-secret-key
+APP_TOKEN_SECRET=replace-with-a-local-app-token-secret

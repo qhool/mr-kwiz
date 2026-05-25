@@ -65,13 +65,23 @@ MrKwiz
    - Postgres: `postgresql://postgres:postgres@127.0.0.1:54322/postgres`
    - Studio: `http://127.0.0.1:54323`
 
-4. **Inspect or stop the local stack when needed**:
+4. **Create local Cloudflare function vars**:
+   ```bash
+   cp .dev.vars.example .dev.vars
+   ```
+
+   Fill in:
+   - `SUPABASE_URL` with the local project URL, usually `http://127.0.0.1:54321`
+   - `SUPABASE_SERVICE_ROLE_KEY` with the local secret key shown by `npm run supabase:status`
+   - `APP_TOKEN_SECRET` with a local-only secret for HMAC/token work
+
+5. **Inspect or stop the local stack when needed**:
    ```bash
    npm run supabase:status
    npm run supabase:stop
    ```
 
-5. **Apply local database changes**:
+6. **Apply local database changes**:
    ```bash
    npm run supabase:db:push
    npm run supabase:db:reset
@@ -79,12 +89,12 @@ MrKwiz
    npm run supabase:types
    ```
 
-6. **Run the Development Server**: 
+7. **Run the Development Server**: 
    ```bash
    npm run dev
    ```
 
-7. **Deploy to Cloudflare**: 
+8. **Deploy to Cloudflare**: 
    Follow the instructions in `wrangler.toml` to deploy your functions to Cloudflare.
 
 ## Local Supabase
