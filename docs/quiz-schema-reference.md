@@ -30,13 +30,14 @@ Patch envelope accepted by the admin edit API.
 
 Display-oriented configuration for quiz presentation.
 
-| field               | type    | required | constraints | notes                                                                                   |
-| ------------------- | ------- | -------- | ----------- | --------------------------------------------------------------------------------------- |
-| completion_markdown | string  | no       |             | Markdown shown after the quiz is completed.                                             |
-| intro_markdown      | string  | no       |             | Markdown shown before the quiz starts.                                                  |
-| result_scale_max    | number  | no       |             | Optional upper bound for result display scaling.                                        |
-| result_scale_min    | number  | no       |             | Optional lower bound for result display scaling.                                        |
-| trait_polarity      | ZodEnum | no       | default     | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max). |
+| field               | type        | required | constraints | notes                                                                                   |
+| ------------------- | ----------- | -------- | ----------- | --------------------------------------------------------------------------------------- |
+| archetypes          | Archetype[] | no       | default     | Ordered archetype and subtype definitions used for result classification.               |
+| completion_markdown | string      | no       |             | Markdown shown after the quiz is completed.                                             |
+| intro_markdown      | string      | no       |             | Markdown shown before the quiz starts.                                                  |
+| result_scale_max    | number      | no       |             | Optional upper bound for result display scaling.                                        |
+| result_scale_min    | number      | no       |             | Optional lower bound for result display scaling.                                        |
+| trait_polarity      | ZodEnum     | no       | default     | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max). |
 
 ## ScoringConfig
 
@@ -74,10 +75,14 @@ Union of all accepted quiz edit operations.
 
 | op                       | schema               | notes                                                                                                                                     |
 | ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| "create_archetype"       | CreateArchetype      |                                                                                                                                           |
 | "create_question"        | CreateQuestion       | Add a new question to the definition.                                                                                                     |
+| "delete_archetype"       | DeleteArchetype      |                                                                                                                                           |
 | "delete_question"        | DeleteQuestion       | Delete an existing question using optimistic concurrency on the old hash.                                                                 |
+| "reorder_archetypes"     | ReorderArchetypes    |                                                                                                                                           |
 | "reorder_questions"      | ReorderQuestions     | Reorder the existing questions by supplying the full ordered question id set.                                                             |
 | "reorder_traits"         | ReorderTraits        | Reorder the existing trait list before any questions exist.                                                                               |
+| "replace_archetype"      | ReplaceArchetype     |                                                                                                                                           |
 | "replace_display_config" | ReplaceDisplayConfig | Replace the entire display_config object. This operation replaces the whole display_config object.                                        |
 | "replace_question"       | ReplaceQuestion      | Replace an existing question using optimistic concurrency on the old hash.                                                                |
 | "replace_scoring_config" | ReplaceScoringConfig | Replace the entire scoring_config object. This operation replaces the whole scoring_config object. It does not rewrite question matrices. |
@@ -101,6 +106,32 @@ One measured trait axis in the quiz definition.
 Notes:
 - Trait order defines the matrix column order for every question.
 
+## Archetype
+
+Main archetype or subtype definition used for result classification.
+
+| field                            | type                      | required | constraints   | notes                                                          |
+| -------------------------------- | ------------------------- | -------- | ------------- | -------------------------------------------------------------- |
+| compatibility_main_archetype_ids | string[]                  | no       | default       | Main archetype ids used by compatibility_mode for subtypes.    |
+| compatibility_mode               | ZodEnum                   | no       |               | Subtype compatibility mode against main archetype ids.         |
+| description                      | string                    | yes      | min length 1  | Human-facing archetype description prose.                      |
+| display_order                    | number                    | yes      | integer, > 0  | 1-based display and matching order for archetype traversal.    |
+| icon                             | string                    | no       | max length 16 | Optional unicode icon string for display.                      |
+| id                               | string                    | yes      | min length 1  | Stable machine-readable archetype identifier.                  |
+| is_main                          | boolean                   | yes      |               | True for main archetypes, false for subtypes.                  |
+| name                             | string                    | yes      | min length 1  | Human-facing archetype name.                                   |
+| trait_conditions                 | ArchetypeTraitCondition[] | yes      | min length 1  | All listed conditions must pass for this archetype to match.   |
+| variants_by_main_archetype_id    | ZodRecord                 | no       | default       | Optional subtype variant overrides keyed by main archetype id. |
+
+## CreateArchetype
+
+| field               | type               | required | constraints  | notes                                                                |
+| ------------------- | ------------------ | -------- | ------------ | -------------------------------------------------------------------- |
+| after_archetype_id  | string             | no       | min length 1 |                                                                      |
+| archetype           | Archetype          | yes      |              | Main archetype or subtype definition used for result classification. |
+| before_archetype_id | string             | no       | min length 1 |                                                                      |
+| op                  | "create_archetype" | yes      |              |                                                                      |
+
 ## CreateQuestion
 
 Add a new question to the definition.
@@ -111,6 +142,13 @@ Add a new question to the definition.
 | before_question_id | string            | no       | min length 1 |                                                                                                                                                                                         |
 | op                 | "create_question" | yes      |              |                                                                                                                                                                                         |
 | question           | Question          | yes      |              | A single v1 quiz question. Question responses, score_matrix rows, and information_matrix rows must stay aligned. score_matrix and information_matrix both use the Matrix indexing rule. |
+
+## DeleteArchetype
+
+| field        | type               | required | constraints  | notes |
+| ------------ | ------------------ | -------- | ------------ | ----- |
+| archetype_id | string             | yes      | min length 1 |       |
+| op           | "delete_archetype" | yes      |              |       |
 
 ## DeleteQuestion
 
@@ -136,6 +174,13 @@ A flattened numeric matrix used for per-response per-trait weights.
 Notes:
 - Indexing rule: values[response_index * trait_count + trait_index].
 
+## ReorderArchetypes
+
+| field         | type                 | required | constraints  | notes |
+| ------------- | -------------------- | -------- | ------------ | ----- |
+| archetype_ids | string[]             | yes      | min length 1 |       |
+| op            | "reorder_archetypes" | yes      |              |       |
+
 ## ReorderQuestions
 
 Reorder the existing questions by supplying the full ordered question id set.
@@ -153,6 +198,14 @@ Reorder the existing trait list before any questions exist.
 | --------- | ---------------- | -------- | ----------- | --------------------------- |
 | op        | "reorder_traits" | yes      |             |                             |
 | trait_ids | string[]         | yes      |             | Full ordered trait id list. |
+
+## ReplaceArchetype
+
+| field        | type                | required | constraints  | notes                                                                |
+| ------------ | ------------------- | -------- | ------------ | -------------------------------------------------------------------- |
+| archetype    | Archetype           | yes      |              | Main archetype or subtype definition used for result classification. |
+| archetype_id | string              | yes      | min length 1 |                                                                      |
+| op           | "replace_archetype" | yes      |              |                                                                      |
 
 ## ReplaceDisplayConfig
 
@@ -239,6 +292,18 @@ A single answer choice for a single-choice question.
 
 Notes:
 - Response order defines the row order used by the question matrices.
+
+## ArchetypeTraitCondition
+
+One trait-level matching rule for an archetype.
+
+| field             | type   | required | constraints  | notes                                                   |
+| ----------------- | ------ | -------- | ------------ | ------------------------------------------------------- |
+| contradiction_max | number | no       |              | Optional inclusive upper bound for trait contradiction. |
+| contradiction_min | number | no       |              | Optional inclusive lower bound for trait contradiction. |
+| score_max         | number | no       |              | Optional inclusive upper bound for trait estimate.      |
+| score_min         | number | no       |              | Optional inclusive lower bound for trait estimate.      |
+| trait_id          | string | yes      | min length 1 | Trait id this condition applies to.                     |
 
 ## CrossFieldValidationRules
 

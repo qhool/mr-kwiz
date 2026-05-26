@@ -12,6 +12,7 @@ export const buildRespondentResultsPrompt = (
     answers: AnsweredQuestion[]
 ): string => {
     const scoreSummary = computeRespondentScores(definition, answers);
+    const selectedArchetype = scoreSummary.selectedArchetype;
     const strongSignalQuestions = getStrongSignalQuestionIdsByTrait(definition, answers);
     const orderedTraits = definition.traits
         .slice()
@@ -57,6 +58,22 @@ export const buildRespondentResultsPrompt = (
         ),
     ].join('\n');
 
+    const selectedArchetypeBlock = selectedArchetype
+        ? [
+              '## Selected Archetype',
+              '',
+              `Main archetype: ${selectedArchetype.main.name}`,
+              `Main description: ${selectedArchetype.main.description}`,
+              ...(selectedArchetype.subtype
+                  ? [
+                        `Subtype: ${selectedArchetype.subtype.name}`,
+                        `Subtype description: ${selectedArchetype.subtype.description}`,
+                    ]
+                  : []),
+              '',
+          ].join('\n')
+        : '';
+
     return [
         '# Mr. Kwiz Results Analysis Request',
         '',
@@ -72,6 +89,7 @@ export const buildRespondentResultsPrompt = (
         `Quiz description: ${definition.description || 'No description provided.'}`,
         `Results interpretation: The results show estimated trait values based on weighted observations from responses. Spread values indicate uncertainty or variance in the estimate.`,
         '',
+        selectedArchetypeBlock,
         '## Trait Scores',
         '',
         scoreTable,

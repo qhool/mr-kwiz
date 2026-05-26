@@ -93,6 +93,10 @@ Allowed operation types:
 * update_trait_text
 * reorder_traits
 * create_question
+* create_archetype
+* replace_archetype
+* delete_archetype
+* reorder_archetypes
 
 Initial setup rules:
 
@@ -116,6 +120,10 @@ Allowed operation types:
 * replace_question
 * delete_question
 * reorder_questions
+* create_archetype
+* replace_archetype
+* delete_archetype
+* reorder_archetypes
 
 Locked-structure rules:
 
@@ -163,6 +171,14 @@ Use replace_display_config when changing display_config.
 Use replace_scoring_config when changing scoring_config.
 
 Use update_trait_text when changing trait labels or descriptions.
+
+Use create_archetype to define a new main archetype or subtype.
+
+Use replace_archetype to redefine an existing archetype.
+
+Use delete_archetype to remove an archetype.
+
+Use reorder_archetypes to change archetype traversal and display order.
 
 {{^has_questions}}
 Use set_traits for initial trait creation or full trait replacement.

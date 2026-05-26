@@ -66,6 +66,66 @@ export const scoringConfigSchema = z
         description: 'Scoring-related configuration for the whole quiz definition.',
     });
 
+export const archetypeTraitConditionSchema = z
+    .strictObject({
+        trait_id: z.string().min(1).meta({ description: 'Trait id this condition applies to.' }),
+        score_min: z.number().optional().meta({ description: 'Optional inclusive lower bound for trait estimate.' }),
+        score_max: z.number().optional().meta({ description: 'Optional inclusive upper bound for trait estimate.' }),
+        contradiction_min: z.number().optional().meta({ description: 'Optional inclusive lower bound for trait contradiction.' }),
+        contradiction_max: z.number().optional().meta({ description: 'Optional inclusive upper bound for trait contradiction.' }),
+    })
+    .meta({
+        description: 'One trait-level matching rule for an archetype.',
+    });
+
+export const archetypeVariantSchema = z
+    .strictObject({
+        name: z.string().min(1).meta({ description: 'Variant name shown when this subtype is paired with the keyed main archetype.' }),
+        description: z.string().min(1).meta({ description: 'Variant description shown when this subtype is paired with the keyed main archetype.' }),
+    })
+    .meta({
+        description: 'Subtype display variant keyed by main archetype id.',
+    });
+
+export const archetypeSchema = z
+    .strictObject({
+        id: z.string().min(1).meta({ description: 'Stable machine-readable archetype identifier.' }),
+        name: z.string().min(1).meta({ description: 'Human-facing archetype name.' }),
+        description: z.string().min(1).meta({ description: 'Human-facing archetype description prose.' }),
+        icon: z.string().max(16).optional().meta({ description: 'Optional unicode icon string for display.' }),
+        is_main: z.boolean().meta({ description: 'True for main archetypes, false for subtypes.' }),
+        trait_conditions: z.array(archetypeTraitConditionSchema).min(1).meta({ description: 'All listed conditions must pass for this archetype to match.' }),
+        compatibility_mode: z.enum(['allow-list', 'incompatibility-list']).optional().meta({ description: 'Subtype compatibility mode against main archetype ids.' }),
+        compatibility_main_archetype_ids: z.array(z.string().min(1)).default([]).meta({ description: 'Main archetype ids used by compatibility_mode for subtypes.' }),
+        variants_by_main_archetype_id: z.record(z.string().min(1), archetypeVariantSchema).default({}).meta({ description: 'Optional subtype variant overrides keyed by main archetype id.' }),
+        display_order: z.number().int().positive().meta({ description: '1-based display and matching order for archetype traversal.' }),
+    })
+    .superRefine((archetype, ctx) => {
+        if (!archetype.is_main && archetype.compatibility_mode && archetype.compatibility_main_archetype_ids.length === 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Subtype archetype ${archetype.id} must include compatibility_main_archetype_ids when compatibility_mode is set.`,
+            });
+        }
+
+        if (archetype.is_main && archetype.compatibility_mode) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Main archetype ${archetype.id} cannot define compatibility_mode.`,
+            });
+        }
+
+        if (archetype.is_main && archetype.compatibility_main_archetype_ids.length > 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: `Main archetype ${archetype.id} cannot define compatibility_main_archetype_ids.`,
+            });
+        }
+    })
+    .meta({
+        description: 'Main archetype or subtype definition used for result classification.',
+    });
+
 export const displayConfigSchema = z
     .looseObject({
         intro_markdown: z.string().optional().meta({ description: 'Markdown shown before the quiz starts.' }),
@@ -73,6 +133,7 @@ export const displayConfigSchema = z
         result_scale_min: z.number().optional().meta({ description: 'Optional lower bound for result display scaling.' }),
         result_scale_max: z.number().optional().meta({ description: 'Optional upper bound for result display scaling.' }),
         trait_polarity: z.enum(['bidirectional', 'unidirectional']).default('bidirectional').meta({ description: 'Whether traits display as bidirectional scales (centered) or unidirectional (0 to max).' }),
+        archetypes: z.array(archetypeSchema).default([]).meta({ description: 'Ordered archetype and subtype definitions used for result classification.' }),
     })
     .meta({
         description: 'Display-oriented configuration for quiz presentation.',
@@ -125,6 +186,14 @@ export const quizDefinitionSchema = z
         }
 
         const traitCount = definition.traits.length;
+        const archetypeIds = definition.display_config.archetypes.map((archetype) => archetype.id);
+        const mainArchetypeIds = definition.display_config.archetypes
+            .filter((archetype) => archetype.is_main)
+            .map((archetype) => archetype.id);
+
+        if (!uniqueValues(archetypeIds)) {
+            ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Archetype IDs must be unique.' });
+        }
 
         if (definition.questions.length > 0 && traitCount === 0) {
             ctx.addIssue({
@@ -163,6 +232,64 @@ export const quizDefinitionSchema = z
                         message: `${matrixName} values length for question ${question.id} must equal rows * cols.`,
                     });
                 }
+            }
+        }
+
+        for (const archetype of definition.display_config.archetypes) {
+            for (const condition of archetype.trait_conditions) {
+                if (!traitIds.includes(condition.trait_id)) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: `Archetype ${archetype.id} references unknown trait ${condition.trait_id}.`,
+                    });
+                }
+
+                if (
+                    condition.score_min !== undefined &&
+                    condition.score_max !== undefined &&
+                    condition.score_min > condition.score_max
+                ) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: `Archetype ${archetype.id} has score_min greater than score_max for trait ${condition.trait_id}.`,
+                    });
+                }
+
+                if (
+                    condition.contradiction_min !== undefined &&
+                    condition.contradiction_max !== undefined &&
+                    condition.contradiction_min > condition.contradiction_max
+                ) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: `Archetype ${archetype.id} has contradiction_min greater than contradiction_max for trait ${condition.trait_id}.`,
+                    });
+                }
+            }
+
+            if (!archetype.is_main) {
+                for (const mainId of archetype.compatibility_main_archetype_ids) {
+                    if (!mainArchetypeIds.includes(mainId)) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            message: `Subtype archetype ${archetype.id} references unknown main archetype ${mainId}.`,
+                        });
+                    }
+                }
+
+                for (const variantMainId of Object.keys(archetype.variants_by_main_archetype_id)) {
+                    if (!mainArchetypeIds.includes(variantMainId)) {
+                        ctx.addIssue({
+                            code: z.ZodIssueCode.custom,
+                            message: `Subtype archetype ${archetype.id} defines variant for unknown main archetype ${variantMainId}.`,
+                        });
+                    }
+                }
+            } else if (Object.keys(archetype.variants_by_main_archetype_id).length > 0) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: `Main archetype ${archetype.id} cannot define variants_by_main_archetype_id.`,
+                });
             }
         }
     })
@@ -330,6 +457,41 @@ export const reorderTraitsSchema = z
         },
     });
 
+export const createArchetypeSchema = z
+    .strictObject({
+        op: z.literal('create_archetype'),
+        archetype: archetypeSchema,
+        before_archetype_id: z.string().min(1).optional(),
+        after_archetype_id: z.string().min(1).optional(),
+    })
+    .superRefine((operation, ctx) => {
+        if (operation.before_archetype_id && operation.after_archetype_id) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'create_archetype cannot specify both before_archetype_id and after_archetype_id.',
+            });
+        }
+    });
+
+export const replaceArchetypeSchema = z
+    .strictObject({
+        op: z.literal('replace_archetype'),
+        archetype_id: z.string().min(1),
+        archetype: archetypeSchema,
+    });
+
+export const deleteArchetypeSchema = z
+    .strictObject({
+        op: z.literal('delete_archetype'),
+        archetype_id: z.string().min(1),
+    });
+
+export const reorderArchetypesSchema = z
+    .strictObject({
+        op: z.literal('reorder_archetypes'),
+        archetype_ids: z.array(z.string().min(1)).min(1),
+    });
+
 export const quizEditOperationSchema = z.union([
     createQuestionSchema,
     replaceQuestionSchema,
@@ -341,6 +503,10 @@ export const quizEditOperationSchema = z.union([
     setTraitsSchema,
     updateTraitTextSchema,
     reorderTraitsSchema,
+    createArchetypeSchema,
+    replaceArchetypeSchema,
+    deleteArchetypeSchema,
+    reorderArchetypesSchema,
 ]).meta({
     description: 'Union of all accepted quiz edit operations.',
 });
@@ -362,6 +528,9 @@ export type ResponseOption = z.infer<typeof responseOptionSchema>;
 export type Matrix = z.infer<typeof matrixSchema>;
 export type Question = z.infer<typeof questionSchema>;
 export type ScoringConfig = z.infer<typeof scoringConfigSchema>;
+export type ArchetypeTraitCondition = z.infer<typeof archetypeTraitConditionSchema>;
+export type ArchetypeVariant = z.infer<typeof archetypeVariantSchema>;
+export type Archetype = z.infer<typeof archetypeSchema>;
 export type DisplayConfig = z.infer<typeof displayConfigSchema>;
 export type QuizDefinition = z.infer<typeof quizDefinitionSchema>;
 export type ReplaceDisplayConfig = z.infer<typeof replaceDisplayConfigSchema>;
@@ -375,7 +544,11 @@ export type TopLevelQuizOperation =
     | ReplaceScoringConfig
     | SetTraits
     | UpdateTraitText
-    | ReorderTraits;
+    | ReorderTraits
+    | z.infer<typeof createArchetypeSchema>
+    | z.infer<typeof replaceArchetypeSchema>
+    | z.infer<typeof deleteArchetypeSchema>
+    | z.infer<typeof reorderArchetypesSchema>;
 export type QuizEditPatch = z.infer<typeof quizEditPatchSchema>;
 export type QuizEditOperation = z.infer<typeof quizEditOperationSchema>;
 
@@ -389,6 +562,13 @@ const normalizeTraitOrdering = (traits: Trait[]): Trait[] => {
 const normalizeQuestionOrdering = (questions: Question[]): Question[] => {
     return questions.map((question, index) => ({
         ...question,
+        display_order: index + 1,
+    }));
+};
+
+const normalizeArchetypeOrdering = (archetypes: Archetype[]): Archetype[] => {
+    return archetypes.map((archetype, index) => ({
+        ...archetype,
         display_order: index + 1,
     }));
 };
@@ -453,6 +633,7 @@ export const createDefaultQuizDefinition = (title: string, description = ''): Qu
         display_config: {
             intro_markdown: 'Configure traits before creating questions.',
             trait_polarity: 'bidirectional',
+            archetypes: [],
         },
     };
 
@@ -658,6 +839,137 @@ export const applyQuizEditPatch = async (
                     traits: normalizeTraitOrdering(
                         requestedIds.map((traitId) => lookup.get(traitId) as Trait)
                     ),
+                };
+                break;
+            }
+
+            case 'create_archetype': {
+                const archetype = archetypeSchema.parse(operation.archetype);
+                const currentArchetypes = nextDefinition.display_config.archetypes ?? [];
+
+                if (currentArchetypes.some((existingArchetype) => existingArchetype.id === archetype.id)) {
+                    throw new QuizEditValidationError(`Archetype ${archetype.id} already exists.`);
+                }
+
+                let insertAt = currentArchetypes.length;
+
+                if (operation.before_archetype_id) {
+                    insertAt = currentArchetypes.findIndex(
+                        (existingArchetype) => existingArchetype.id === operation.before_archetype_id
+                    );
+                    if (insertAt === -1) {
+                        throw new QuizEditValidationError(
+                            `Archetype ${operation.before_archetype_id} was not found for insertion.`
+                        );
+                    }
+                } else if (operation.after_archetype_id) {
+                    insertAt =
+                        currentArchetypes.findIndex(
+                            (existingArchetype) => existingArchetype.id === operation.after_archetype_id
+                        ) + 1;
+                    if (insertAt === 0) {
+                        throw new QuizEditValidationError(
+                            `Archetype ${operation.after_archetype_id} was not found for insertion.`
+                        );
+                    }
+                }
+
+                const archetypes = [...currentArchetypes];
+                archetypes.splice(insertAt, 0, archetype);
+
+                nextDefinition = {
+                    ...nextDefinition,
+                    display_config: {
+                        ...nextDefinition.display_config,
+                        archetypes: normalizeArchetypeOrdering(archetypes),
+                    },
+                };
+                break;
+            }
+
+            case 'replace_archetype': {
+                const archetype = archetypeSchema.parse(operation.archetype);
+                const currentArchetypes = nextDefinition.display_config.archetypes ?? [];
+                const archetypeIndex = currentArchetypes.findIndex(
+                    (entry) => entry.id === operation.archetype_id
+                );
+
+                if (archetypeIndex === -1) {
+                    throw new QuizEditValidationError(`Archetype ${operation.archetype_id} does not exist.`);
+                }
+
+                if (archetype.id !== operation.archetype_id) {
+                    throw new QuizEditValidationError('Replacement archetype.id must match archetype_id.');
+                }
+
+                const duplicate = currentArchetypes.find(
+                    (entry, index) => entry.id === archetype.id && index !== archetypeIndex
+                );
+                if (duplicate) {
+                    throw new QuizEditValidationError(`Archetype ${archetype.id} already exists.`);
+                }
+
+                const archetypes = [...currentArchetypes];
+                archetypes[archetypeIndex] = archetype;
+
+                nextDefinition = {
+                    ...nextDefinition,
+                    display_config: {
+                        ...nextDefinition.display_config,
+                        archetypes: normalizeArchetypeOrdering(archetypes),
+                    },
+                };
+                break;
+            }
+
+            case 'delete_archetype': {
+                const currentArchetypes = nextDefinition.display_config.archetypes ?? [];
+                const archetypeIndex = currentArchetypes.findIndex(
+                    (entry) => entry.id === operation.archetype_id
+                );
+
+                if (archetypeIndex === -1) {
+                    throw new QuizEditValidationError(`Archetype ${operation.archetype_id} does not exist.`);
+                }
+
+                const remainingArchetypes = currentArchetypes.filter(
+                    (entry) => entry.id !== operation.archetype_id
+                );
+
+                nextDefinition = {
+                    ...nextDefinition,
+                    display_config: {
+                        ...nextDefinition.display_config,
+                        archetypes: normalizeArchetypeOrdering(remainingArchetypes),
+                    },
+                };
+                break;
+            }
+
+            case 'reorder_archetypes': {
+                const currentArchetypes = nextDefinition.display_config.archetypes ?? [];
+                const currentIds = currentArchetypes.map((archetype) => archetype.id);
+                const requestedIds = operation.archetype_ids;
+
+                if (
+                    currentIds.length !== requestedIds.length ||
+                    !uniqueValues(requestedIds) ||
+                    currentIds.some((archetypeId) => !requestedIds.includes(archetypeId))
+                ) {
+                    throw new QuizEditValidationError(
+                        'reorder_archetypes must contain exactly the current set of archetype IDs.'
+                    );
+                }
+
+                const lookup = new Map(currentArchetypes.map((archetype) => [archetype.id, archetype]));
+                nextDefinition = {
+                    ...nextDefinition,
+                    display_config: {
+                        ...nextDefinition.display_config,
+                        archetypes: normalizeArchetypeOrdering(
+                            requestedIds.map((archetypeId) => lookup.get(archetypeId) as Archetype)
+                        ),
+                    },
                 };
                 break;
             }

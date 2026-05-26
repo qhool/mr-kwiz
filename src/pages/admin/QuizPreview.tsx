@@ -10,7 +10,7 @@ import {
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
 import { quizDefinitionSchema, quizEditPatchSchema, type QuizDefinition } from '../../lib/quiz-definition';
-import type { TraitStatistics } from '../../lib/respondent-quiz';
+import { selectArchetype, type TraitStatistics } from '../../lib/respondent-quiz';
 
 type AdminQuizResponse = {
     quiz: {
@@ -161,6 +161,14 @@ const QuizPreviewPage: React.FC = () => {
             })
         );
     }, [definition, previewScores, previewUncertainty, scaleMax, scaleMin, scaleRange]);
+
+    const previewSelectedArchetype = React.useMemo(() => {
+        if (!definition) {
+            return undefined;
+        }
+
+        return selectArchetype(definition, previewTraitStats);
+    }, [definition, previewTraitStats]);
 
     const selectedQuestion =
         selectedScreen.type === 'question'
@@ -546,6 +554,7 @@ const QuizPreviewPage: React.FC = () => {
                             scaleMax={scaleMax}
                             scaleMin={scaleMin}
                             scores={previewScores}
+                            selectedArchetype={previewSelectedArchetype}
                             traitPolarity={definition.display_config.trait_polarity}
                             traitStats={previewTraitStats}
                             traits={definition.traits}

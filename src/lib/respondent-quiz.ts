@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import type { Question, QuizDefinition, Trait } from './quiz-definition';
+import type { Archetype, Question, QuizDefinition, Trait } from './quiz-definition';
 
 const RESPONDENT_STORAGE_KEY = 'mrkwiz.respondentSessions.v1';
 
@@ -88,6 +88,18 @@ export type TraitStatistics = {
     contradiction: number;
 };
 
+export type SelectedArchetypeInfo = {
+    main: Archetype;
+    subtype?: Archetype;
+};
+
+export type SelectedArchetypeDisplay = {
+    mainDescription: string;
+    mainName: string;
+    subtypeDescription?: string;
+    subtypeName?: string;
+};
+
 export type RespondentSessionScoreSummary = {
     answeredQuestions: Array<{
         answerId: string;
@@ -96,7 +108,104 @@ export type RespondentSessionScoreSummary = {
         selectedResponseIndex: number;
     }>;
     scores: Record<string, number>;
+    selectedArchetype?: SelectedArchetypeInfo;
     traitStats: Record<string, TraitStatistics>;
+};
+
+const orderedArchetypes = (definition: QuizDefinition): Archetype[] => {
+    return [...(definition.display_config.archetypes ?? [])].sort(
+        (left, right) => left.display_order - right.display_order
+    );
+};
+
+const matchesArchetypeConditions = (
+    archetype: Archetype,
+    traitStats: Record<string, TraitStatistics>
+): boolean => {
+    return archetype.trait_conditions.every((condition) => {
+        const stat = traitStats[condition.trait_id];
+        if (!stat) {
+            return false;
+        }
+
+        if (condition.score_min !== undefined && stat.estimate < condition.score_min) {
+            return false;
+        }
+
+        if (condition.score_max !== undefined && stat.estimate > condition.score_max) {
+            return false;
+        }
+
+        if (condition.contradiction_min !== undefined && stat.contradiction < condition.contradiction_min) {
+            return false;
+        }
+
+        if (condition.contradiction_max !== undefined && stat.contradiction > condition.contradiction_max) {
+            return false;
+        }
+
+        return true;
+    });
+};
+
+const isSubtypeCompatibleWithMain = (subtype: Archetype, mainArchetypeId: string): boolean => {
+    if (subtype.is_main) {
+        return false;
+    }
+
+    if (!subtype.compatibility_mode || subtype.compatibility_main_archetype_ids.length === 0) {
+        return true;
+    }
+
+    if (subtype.compatibility_mode === 'allow-list') {
+        return subtype.compatibility_main_archetype_ids.includes(mainArchetypeId);
+    }
+
+    return !subtype.compatibility_main_archetype_ids.includes(mainArchetypeId);
+};
+
+export const selectArchetype = (
+    definition: QuizDefinition,
+    traitStats: Record<string, TraitStatistics>
+): SelectedArchetypeInfo | undefined => {
+    const archetypes = orderedArchetypes(definition);
+    const main = archetypes.find(
+        (archetype) => archetype.is_main && matchesArchetypeConditions(archetype, traitStats)
+    );
+
+    if (!main) {
+        return undefined;
+    }
+
+    const subtype = archetypes.find(
+        (archetype) =>
+            !archetype.is_main &&
+            isSubtypeCompatibleWithMain(archetype, main.id) &&
+            matchesArchetypeConditions(archetype, traitStats)
+    );
+
+    return {
+        main,
+        subtype,
+    };
+};
+
+export const getSelectedArchetypeDisplay = (
+    selectedArchetype?: SelectedArchetypeInfo
+): SelectedArchetypeDisplay | undefined => {
+    if (!selectedArchetype) {
+        return undefined;
+    }
+
+    const { main, subtype } = selectedArchetype;
+    const variant = subtype?.variants_by_main_archetype_id?.[main.id];
+
+    return {
+        mainDescription: main.description,
+        mainName: main.name,
+        subtypeDescription: subtype ? variant?.description ?? subtype.description : undefined,
+        subtypeName: subtype ? variant?.name ?? subtype.name : undefined,
+    };
 };
 
 const hasWindow = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -205,9 +314,11 @@ export const computeRespondentScores = (
         traitIds.map((traitId) => [traitId, { weightSum: 0, weightedScoreSum: 0 }])
     );
     const answeredQuestions: RespondentSessionScoreSummary['answeredQuestions'] = [];
+    const questionById = new Map(definition.questions.map((question) => [question.id, question]));
+    const traitIndexById = new Map(traitIds.map((traitId, index) => [traitId, index]));
 
     for (const answer of answers) {
-        const question = definition.questions.find((entry) => entry.id === answer.question_id);
+        const question = questionById.get(answer.question_id);
         if (!question) {
             continue;
         }
@@ -256,7 +367,7 @@ export const computeRespondentScores = (
         // Compute variance using the estimate
         let squaredErrorSum = 0;
         for (const answer of answers) {
-            const question = definition.questions.find((entry) => entry.id === answer.question_id);
+            const question = questionById.get(answer.question_id);
             if (!question) continue;
             
             const orderedResponses = question.responses
@@ -268,7 +379,10 @@ export const computeRespondentScores = (
             
             if (selectedResponseIndex === -1) continue;
             
-            const traitIndex = traitIds.indexOf(traitId);
+            const traitIndex = traitIndexById.get(traitId);
+            if (traitIndex === undefined) {
+                continue;
+            }
             const matrixIndex = selectedResponseIndex * traitIds.length + traitIndex;
             const score = question.score_matrix.values[matrixIndex] ?? 0;
             const information = question.information_matrix.values[matrixIndex] ?? 0;
@@ -289,6 +403,7 @@ export const computeRespondentScores = (
     return {
         answeredQuestions,
         scores,
+        selectedArchetype: selectArchetype(definition, finalTraitStats),
         traitStats: finalTraitStats,
     };
 };

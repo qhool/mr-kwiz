@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown';
 
 import { BidirectionalBarChart, SpiderChart, UnidirectionalBarChart } from './respondent-results-charts';
 import type { Question, QuizDefinition, Trait } from '../lib/quiz-definition';
-import type { TraitStatistics } from '../lib/respondent-quiz';
+import { getSelectedArchetypeDisplay, type SelectedArchetypeInfo, type TraitStatistics } from '../lib/respondent-quiz';
 
 const markdownCardStyle: React.CSSProperties = {
     color: '#241d14',
@@ -176,12 +176,21 @@ export const QuizResultsScreen: React.FC<{
     scaleMax: number;
     scaleMin: number;
     scores: Record<string, number>;
+    selectedArchetype?: SelectedArchetypeInfo;
     subtitle?: string;
     title?: string;
     traits: Trait[];
     traitPolarity: 'bidirectional' | 'unidirectional';
     traitStats?: Record<string, TraitStatistics>;
-}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, subtitle, title = 'Results Preview', traits, traitPolarity, traitStats }) => {
+}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', traits, traitPolarity, traitStats }) => {
+    const selectedArchetypeDisplay = React.useMemo(
+        () => getSelectedArchetypeDisplay(selectedArchetype),
+        [selectedArchetype]
+    );
+    const overviewTitle = selectedArchetypeDisplay
+        ? `${selectedArchetypeDisplay.mainName}${selectedArchetypeDisplay.subtypeName ? ` (${selectedArchetypeDisplay.subtypeName})` : ''}`
+        : 'Overview';
+
     const previewTraitStats = React.useMemo<Record<string, TraitStatistics>>(() => {
         if (traitStats) {
             return traitStats;
@@ -207,7 +216,7 @@ export const QuizResultsScreen: React.FC<{
             ) : (
                 <div style={{ display: 'grid', gap: '2rem' }}>
                     <div>
-                        <h3 style={{ marginTop: 0 }}>Overview</h3>
+                        <h3 style={{ marginTop: 0 }}>{overviewTitle}</h3>
                         <SpiderChart
                             polarity={traitPolarity}
                             scaleMin={scaleMin}
@@ -217,7 +226,6 @@ export const QuizResultsScreen: React.FC<{
                         />
                     </div>
                     <div>
-                        <h3>Details</h3>
                         {traitPolarity === 'bidirectional' ? (
                             <BidirectionalBarChart
                                 polarity={traitPolarity}
@@ -236,6 +244,14 @@ export const QuizResultsScreen: React.FC<{
                             />
                         )}
                     </div>
+                    {selectedArchetypeDisplay ? (
+                        <div style={{ display: 'grid', gap: '0.65rem' }}>
+                            <p style={{ color: '#352a1b', margin: 0 }}>{selectedArchetypeDisplay.mainDescription}</p>
+                            {selectedArchetypeDisplay.subtypeDescription ? (
+                                <p style={{ color: '#3f3120', margin: 0 }}>{selectedArchetypeDisplay.subtypeDescription}</p>
+                            ) : null}
+                        </div>
+                    ) : null}
                 </div>
             )}
         </QuizPreviewSurface>

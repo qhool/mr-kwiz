@@ -165,6 +165,7 @@ const QuizSessionPage: React.FC = () => {
                             scaleMax={definition.display_config.result_scale_max ?? 1}
                             scaleMin={definition.display_config.result_scale_min ?? -1}
                             scores={scoreSummary.scores}
+                            selectedArchetype={scoreSummary.selectedArchetype}
                             subtitle="Your answered questions have been scored using the quiz's trait matrix."
                             title="Your Results"
                             traits={definition.traits}
