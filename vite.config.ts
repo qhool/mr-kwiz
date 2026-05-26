@@ -12,6 +12,12 @@ import {
   handleAdminInvitationsGet,
   handleAdminInvitationsPost,
 } from './functions/api/admin/handle-invitations';
+import {
+  handleRespondentAnswerPost,
+  handleRespondentInvitationGet,
+  handleRespondentInvitationPickupPost,
+  handleRespondentSessionGet,
+} from './functions/api/respondent/handle-respondent';
 
 const readDevVars = () => {
   const devVarsPath = path.resolve(process.cwd(), '.dev.vars');
@@ -53,6 +59,10 @@ const adminEditPattern = /^\/api\/admin\/([^/]+)\/edit\/?$/;
 const adminInvitationsPattern = /^\/api\/admin\/([^/]+)\/invitations\/?$/;
 const adminInvitationDetailPattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/?$/;
 const adminInvitationDeactivatePattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/deactivate\/?$/;
+const respondentInvitationPattern = /^\/api\/respondent\/invite\/([^/]+)\/?$/;
+const respondentInvitationPickupPattern = /^\/api\/respondent\/invite\/([^/]+)\/pickup\/?$/;
+const respondentResponsePattern = /^\/api\/respondent\/response\/([^/]+)\/?$/;
+const respondentAnswerPattern = /^\/api\/respondent\/response\/([^/]+)\/answer\/?$/;
 
 const readRequestBody = async (req: import('node:http').IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
@@ -89,11 +99,16 @@ export default defineConfig({
       name: 'local-admin-api-middleware',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
-          const url = req.url ? new URL(req.url, 'http://localhost:3000') : null;
+          const requestHost = req.headers.host ?? 'localhost:3000';
+          const url = req.url ? new URL(req.url, `http://${requestHost}`) : null;
           const deactivateMatch = url?.pathname.match(adminInvitationDeactivatePattern);
           const invitationDetailMatch = url?.pathname.match(adminInvitationDetailPattern);
           const invitationsMatch = url?.pathname.match(adminInvitationsPattern);
           const editMatch = url?.pathname.match(adminEditPattern);
+          const respondentInvitationPickupMatch = url?.pathname.match(respondentInvitationPickupPattern);
+          const respondentInvitationMatch = url?.pathname.match(respondentInvitationPattern);
+          const respondentAnswerMatch = url?.pathname.match(respondentAnswerPattern);
+          const respondentResponseMatch = url?.pathname.match(respondentResponsePattern);
 
           if (!url) {
             next();
@@ -101,6 +116,36 @@ export default defineConfig({
           }
 
           const env = readDevVars();
+
+          if (respondentInvitationPickupMatch && req.method === 'POST') {
+            const invitationKey = decodeURIComponent(respondentInvitationPickupMatch[1]);
+            const request = await buildNodeRequest(req, url, 'POST');
+            const response = await handleRespondentInvitationPickupPost(env, invitationKey, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentInvitationMatch && req.method === 'GET') {
+            const invitationKey = decodeURIComponent(respondentInvitationMatch[1]);
+            const response = await handleRespondentInvitationGet(env, invitationKey);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentAnswerMatch && req.method === 'POST') {
+            const responseKey = decodeURIComponent(respondentAnswerMatch[1]);
+            const request = await buildNodeRequest(req, url, 'POST');
+            const response = await handleRespondentAnswerPost(env, responseKey, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentResponseMatch && req.method === 'GET') {
+            const responseKey = decodeURIComponent(respondentResponseMatch[1]);
+            const response = await handleRespondentSessionGet(env, responseKey);
+            await writeNodeResponse(res, response);
+            return;
+          }
 
           if (deactivateMatch && req.method === 'POST') {
             const adminKey = decodeURIComponent(deactivateMatch[1]);

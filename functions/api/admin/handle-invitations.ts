@@ -10,6 +10,7 @@ import { getQuizByAdminKey, json } from './shared';
 
 const invitationSelect = [
     'id',
+    'quiz_id',
     'invitation_key',
     'label',
     'description',

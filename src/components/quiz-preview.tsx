@@ -57,8 +57,11 @@ const renderMarkdown = (markdown?: string) => {
     );
 };
 
-export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ subtitle?: string; title: string }>> = ({
+const defaultAdminIntroMarkdown = 'Configure traits before creating questions.';
+
+export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: string; subtitle?: string; title: string }>> = ({
     children,
+    eyebrow = 'Preview Surface',
     subtitle,
     title,
 }) => {
@@ -72,7 +75,7 @@ export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ subtitle?: s
                 }}
             >
                 <p style={{ color: '#6b5734', fontSize: '0.82rem', letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
-                    Preview Surface
+                    {eyebrow}
                 </p>
                 <h2 style={{ fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
                 {subtitle ? <p style={{ color: '#5a4a2f', margin: 0 }}>{subtitle}</p> : null}
@@ -82,26 +85,38 @@ export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ subtitle?: s
     );
 };
 
-export const QuizIntroScreen: React.FC<{ definition: QuizDefinition }> = ({ definition }) => {
+export const QuizIntroScreen: React.FC<{
+    definition: QuizDefinition;
+    emptyStateMessage?: string;
+    suppressDefaultAdminIntro?: boolean;
+}> = ({ definition, emptyStateMessage = 'No intro markdown is defined yet.', suppressDefaultAdminIntro = false }) => {
+    const introMarkdown =
+        suppressDefaultAdminIntro && definition.display_config.intro_markdown === defaultAdminIntroMarkdown
+            ? undefined
+            : definition.display_config.intro_markdown;
+
     return (
         <QuizPreviewSurface subtitle={definition.description || 'No description provided yet.'} title={definition.title}>
-            {definition.display_config.intro_markdown ? (
-                renderMarkdown(definition.display_config.intro_markdown)
+            {introMarkdown ? (
+                renderMarkdown(introMarkdown)
             ) : (
-                <div style={emptyStateStyle}>No intro markdown is defined yet.</div>
+                <div style={emptyStateStyle}>{emptyStateMessage}</div>
             )}
         </QuizPreviewSurface>
     );
 };
 
 export const QuizQuestionScreen: React.FC<{
+    eyebrow?: string;
+    onSelectResponse?: (responseId: string) => void;
     question: Question | null;
     questionIndex: number;
     questionCount: number;
-}> = ({ question, questionCount, questionIndex }) => {
+    selectedResponseId?: string | null;
+}> = ({ eyebrow, onSelectResponse, question, questionCount, questionIndex, selectedResponseId }) => {
     if (!question) {
         return (
-            <QuizPreviewSurface subtitle="Create at least one question to preview the participant experience." title="Question Preview">
+            <QuizPreviewSurface eyebrow={eyebrow} subtitle="Create at least one question to preview the participant experience." title="Question Preview">
                 <div style={emptyStateStyle}>No questions are defined yet.</div>
             </QuizPreviewSurface>
         );
@@ -109,13 +124,25 @@ export const QuizQuestionScreen: React.FC<{
 
     return (
         <QuizPreviewSurface
+            eyebrow={eyebrow}
             subtitle={`Question ${questionIndex + 1} of ${questionCount}`}
             title={question.prompt}
         >
             {question.help_text ? <div style={{ marginBottom: '1.25rem' }}>{renderMarkdown(question.help_text)}</div> : null}
             <div style={{ display: 'grid', gap: '0.9rem' }}>
                 {question.responses.map((response) => (
-                    <article key={response.id} style={responseCardStyle}>
+                    <article
+                        key={response.id}
+                        onClick={onSelectResponse ? () => onSelectResponse(response.id) : undefined}
+                        style={{
+                            ...responseCardStyle,
+                            border:
+                                selectedResponseId === response.id
+                                    ? '2px solid #8b6940'
+                                    : responseCardStyle.border,
+                            cursor: onSelectResponse ? 'pointer' : 'default',
+                        }}
+                    >
                         <div style={{ display: 'flex', gap: '0.8rem', justifyContent: 'space-between' }}>
                             <div>
                                 <h3 style={{ fontSize: '1.05rem', margin: 0 }}>{response.label}</h3>
@@ -149,13 +176,16 @@ export const QuizQuestionScreen: React.FC<{
 
 export const QuizResultsScreen: React.FC<{
     completionMarkdown?: string;
+    eyebrow?: string;
     scaleMax: number;
     scaleMin: number;
     scores: Record<string, number>;
+    subtitle?: string;
+    title?: string;
     traits: Trait[];
-}> = ({ completionMarkdown, scaleMax, scaleMin, scores, traits }) => {
+}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, subtitle, title = 'Results Preview', traits }) => {
     return (
-        <QuizPreviewSurface subtitle="Admin preview using simulated trait scores." title="Results Preview">
+        <QuizPreviewSurface eyebrow={eyebrow} subtitle={subtitle ?? 'Admin preview using simulated trait scores.'} title={title}>
             {completionMarkdown ? <div style={{ marginBottom: '1.5rem' }}>{renderMarkdown(completionMarkdown)}</div> : null}
             {traits.length === 0 ? (
                 <div style={emptyStateStyle}>No traits are defined yet, so there is nothing meaningful to show in the results view.</div>

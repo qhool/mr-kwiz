@@ -1,7 +1,18 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+
+import { getMostRecentStoredRespondentSession } from '../lib/respondent-quiz';
 
 const Home: React.FC = () => {
+    const navigate = useNavigate();
+
+    React.useEffect(() => {
+        const mostRecentSession = getMostRecentStoredRespondentSession();
+        if (mostRecentSession) {
+            navigate(`/quiz/${encodeURIComponent(mostRecentSession.response_key)}`, { replace: true });
+        }
+    }, [navigate]);
+
     return (
         <div style={{ margin: '0 auto', maxWidth: 960, padding: '4rem 1.5rem' }}>
             <h1>Welcome to MrKwiz!</h1>

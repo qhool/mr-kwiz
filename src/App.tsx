@@ -4,6 +4,8 @@ import HomePage from './pages/index';
 import QuizEditPage from './pages/admin/QuizEdit';
 import QuizInvitationsPage from './pages/admin/QuizInvitations';
 import QuizPreviewPage from './pages/admin/QuizPreview';
+import InvitationPickupPage from './pages/respondent/InvitationPickup';
+import QuizSessionPage from './pages/respondent/QuizSession';
 
 const App: React.FC = () => {
   return (
@@ -13,6 +15,8 @@ const App: React.FC = () => {
         <Route path="/admin/:adminKey/edit" element={<QuizEditPage />} />
         <Route path="/admin/:adminKey/invitations" element={<QuizInvitationsPage />} />
         <Route path="/admin/:adminKey/preview" element={<QuizPreviewPage />} />
+        <Route path="/invite/:invitationKey" element={<InvitationPickupPage />} />
+        <Route path="/quiz/:responseKey" element={<QuizSessionPage />} />
       </Routes>
     </BrowserRouter>
   );

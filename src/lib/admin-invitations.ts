@@ -6,6 +6,7 @@ export const quizInvitationSchema = z.object({
     label: z.string(),
     description: z.string(),
     max_uses: z.number().int().positive().nullable(),
+    quiz_id: z.string().uuid(),
     use_count: z.number().int().nonnegative(),
     expires_at: z.string().nullable(),
     revoked_at: z.string().nullable(),
