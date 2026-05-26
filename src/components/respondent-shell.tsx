@@ -23,10 +23,10 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
                 <header
                     style={{
                         alignItems: 'center',
-                        background: 'rgba(255, 250, 240, 0.92)',
-                        border: '1px solid #c8bfa9',
+                        background: '#f8f7f3',
+                        border: '1px solid #b8ae98',
                         borderRadius: 20,
-                        boxShadow: '0 18px 45px rgba(70, 54, 28, 0.08)',
+                        boxShadow: '0 18px 45px rgba(45, 35, 20, 0.08)',
                         display: 'flex',
                         flexWrap: 'wrap',
                         gap: '1rem',
@@ -35,21 +35,22 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
                     }}
                 >
                     <div>
-                        <div style={{ color: '#6b5734', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                        <div style={{ color: '#4a3b26', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                             Mr. Kwiz
                         </div>
-                        <h1 style={{ fontSize: '1.6rem', margin: '0.25rem 0 0' }}>{quizTitle}</h1>
+                        <h1 style={{ color: '#241d14', fontSize: '1.6rem', margin: '0.25rem 0 0' }}>{quizTitle}</h1>
                     </div>
-                    <label style={{ color: '#4d3b22', display: 'grid', gap: '0.35rem', minWidth: 240 }}>
+                    <label style={{ color: '#2f2518', display: 'grid', gap: '0.35rem', minWidth: 240 }}>
                         <span style={{ fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
                             Switch Saved Quiz
                         </span>
                         <select
                             onChange={(event) => onSelectSession(event.target.value)}
                             style={{
-                                border: '1px solid #c8bfa9',
+                                background: '#fcfbf8',
+                                border: '1px solid #b8ae98',
                                 borderRadius: 12,
-                                color: '#342c20',
+                                color: '#241d14',
                                 padding: '0.7rem 0.9rem',
                             }}
                             value={currentResponseKey}

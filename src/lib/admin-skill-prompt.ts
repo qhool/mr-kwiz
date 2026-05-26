@@ -47,7 +47,18 @@ const renderTable = (headers: string[], rows: string[][]): string => {
 };
 
 const renderTraitOrder = (definition: QuizDefinition): string => {
-    const lines = ['## Trait Order', ''];
+    const lines = ['## Trait Order and Polarity', ''];
+    
+    const polarity = definition.display_config.trait_polarity ?? 'bidirectional';
+    lines.push(`All traits are configured as: **${polarity}** traits.`);
+    lines.push('');
+    
+    if (polarity === 'bidirectional') {
+        lines.push('Participants will see symmetric scales centered around a midpoint, with the low label on one end and high label on the other. Results will show positive or negative values relative to the center.');
+    } else {
+        lines.push('Participants will see unidirectional scales running from 0 to max. Results will only show values from 0 upward.');
+    }
+    lines.push('');
 
     if (definition.traits.length === 0) {
         lines.push('No traits are defined yet.');

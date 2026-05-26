@@ -1,19 +1,21 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 
-import type { DisplayConfig, Question, QuizDefinition, Trait } from '../lib/quiz-definition';
+import { BidirectionalBarChart, SpiderChart, UnidirectionalBarChart } from './respondent-results-charts';
+import type { Question, QuizDefinition, Trait } from '../lib/quiz-definition';
+import type { TraitStatistics } from '../lib/respondent-quiz';
 
 const markdownCardStyle: React.CSSProperties = {
-    color: '#342c20',
+    color: '#241d14',
     fontSize: '1rem',
     lineHeight: 1.65,
 };
 
 const surfaceStyle: React.CSSProperties = {
-    background: 'rgba(255, 250, 240, 0.92)',
-    border: '1px solid #c8bfa9',
+    background: '#f8f7f3',
+    border: '1px solid #b8ae98',
     borderRadius: 20,
-    boxShadow: '0 18px 45px rgba(70, 54, 28, 0.12)',
+    boxShadow: '0 18px 45px rgba(45, 35, 20, 0.1)',
     margin: '0 auto',
     maxWidth: 820,
     overflow: 'hidden',
@@ -24,26 +26,19 @@ const shellStyle: React.CSSProperties = {
 };
 
 const emptyStateStyle: React.CSSProperties = {
-    background: 'rgba(244, 235, 212, 0.9)',
-    border: '1px dashed #b79e72',
+    background: '#f1ede4',
+    border: '1px dashed #9f9378',
     borderRadius: 16,
-    color: '#5a4a2f',
+    color: '#3d3120',
     padding: '1rem 1.1rem',
 };
 
 const responseCardStyle: React.CSSProperties = {
-    background: '#fffdf7',
-    border: '1px solid #d9ccb0',
+    background: '#fcfbf8',
+    border: '1px solid #c7bea9',
     borderRadius: 16,
     padding: '1rem 1rem 0.9rem',
 };
-
-const traitScoreStyle = (positionPercent: number): React.CSSProperties => ({
-    background: `linear-gradient(90deg, #8b6940 0%, #8b6940 ${positionPercent}%, rgba(139, 105, 64, 0.18) ${positionPercent}%, rgba(139, 105, 64, 0.18) 100%)`,
-    borderRadius: 999,
-    height: 10,
-    marginTop: '0.75rem',
-});
 
 const renderMarkdown = (markdown?: string) => {
     if (!markdown) {
@@ -69,16 +64,16 @@ export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: st
         <section style={surfaceStyle}>
             <div
                 style={{
-                    background: 'linear-gradient(135deg, rgba(140, 108, 62, 0.16), rgba(231, 195, 120, 0.24))',
-                    borderBottom: '1px solid #d9ccb0',
+                    background: 'linear-gradient(135deg, rgba(166, 154, 130, 0.2), rgba(225, 219, 203, 0.45))',
+                    borderBottom: '1px solid #c2b7a1',
                     padding: '1.6rem 2rem',
                 }}
             >
-                <p style={{ color: '#6b5734', fontSize: '0.82rem', letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
+                <p style={{ color: '#4a3b26', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
                     {eyebrow}
                 </p>
-                <h2 style={{ fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
-                {subtitle ? <p style={{ color: '#5a4a2f', margin: 0 }}>{subtitle}</p> : null}
+                <h2 style={{ color: '#241d14', fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
+                {subtitle ? <p style={{ color: '#3e3222', margin: 0 }}>{subtitle}</p> : null}
             </div>
             <div style={shellStyle}>{children}</div>
         </section>
@@ -147,17 +142,18 @@ export const QuizQuestionScreen: React.FC<{
                             <div>
                                 <h3 style={{ fontSize: '1.05rem', margin: 0 }}>{response.label}</h3>
                                 {response.help_text ? (
-                                    <p style={{ color: '#68573c', margin: '0.35rem 0 0' }}>{response.help_text}</p>
+                                    <p style={{ color: '#4d3d28', margin: '0.35rem 0 0' }}>{response.help_text}</p>
                                 ) : null}
                             </div>
                             <div
                                 style={{
                                     alignItems: 'center',
-                                    background: '#f1e6c9',
+                                    background: '#e7dfcf',
                                     borderRadius: 999,
-                                    color: '#6b5734',
+                                    color: '#3e3222',
                                     display: 'inline-flex',
                                     fontSize: '0.8rem',
+                                    fontWeight: 700,
                                     height: 28,
                                     justifyContent: 'center',
                                     minWidth: 28,
@@ -183,38 +179,63 @@ export const QuizResultsScreen: React.FC<{
     subtitle?: string;
     title?: string;
     traits: Trait[];
-}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, subtitle, title = 'Results Preview', traits }) => {
+    traitPolarity: 'bidirectional' | 'unidirectional';
+    traitStats?: Record<string, TraitStatistics>;
+}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, subtitle, title = 'Results Preview', traits, traitPolarity, traitStats }) => {
+    const previewTraitStats = React.useMemo<Record<string, TraitStatistics>>(() => {
+        if (traitStats) {
+            return traitStats;
+        }
+
+        return Object.fromEntries(
+            traits.map((trait) => [
+                trait.id,
+                {
+                    contradiction: 0,
+                    estimate: scores[trait.id] ?? 0,
+                    spread: 0,
+                },
+            ])
+        );
+    }, [scores, traitStats, traits]);
+
     return (
         <QuizPreviewSurface eyebrow={eyebrow} subtitle={subtitle ?? 'Admin preview using simulated trait scores.'} title={title}>
             {completionMarkdown ? <div style={{ marginBottom: '1.5rem' }}>{renderMarkdown(completionMarkdown)}</div> : null}
             {traits.length === 0 ? (
                 <div style={emptyStateStyle}>No traits are defined yet, so there is nothing meaningful to show in the results view.</div>
             ) : (
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                    {traits.map((trait) => {
-                        const score = scores[trait.id] ?? 0;
-                        const safeRange = scaleMax - scaleMin === 0 ? 1 : scaleMax - scaleMin;
-                        const positionPercent = Math.max(0, Math.min(100, ((score - scaleMin) / safeRange) * 100));
-
-                        return (
-                            <article key={trait.id} style={responseCardStyle}>
-                                <div style={{ alignItems: 'baseline', display: 'flex', justifyContent: 'space-between', gap: '1rem' }}>
-                                    <div>
-                                        <h3 style={{ margin: 0 }}>{trait.label}</h3>
-                                        {trait.description ? (
-                                            <p style={{ color: '#68573c', margin: '0.35rem 0 0' }}>{trait.description}</p>
-                                        ) : null}
-                                    </div>
-                                    <strong style={{ color: '#4d3b22', fontSize: '1.1rem' }}>{score.toFixed(2)}</strong>
-                                </div>
-                                <div style={traitScoreStyle(positionPercent)} />
-                                <div style={{ color: '#6b5734', display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.55rem' }}>
-                                    <span>{trait.low_label}</span>
-                                    <span>{trait.high_label}</span>
-                                </div>
-                            </article>
-                        );
-                    })}
+                <div style={{ display: 'grid', gap: '2rem' }}>
+                    <div>
+                        <h3 style={{ marginTop: 0 }}>Overview</h3>
+                        <SpiderChart
+                            polarity={traitPolarity}
+                            scaleMin={scaleMin}
+                            scaleMax={scaleMax}
+                            traits={traits}
+                            traitStats={previewTraitStats}
+                        />
+                    </div>
+                    <div>
+                        <h3>Details</h3>
+                        {traitPolarity === 'bidirectional' ? (
+                            <BidirectionalBarChart
+                                polarity={traitPolarity}
+                                scaleMin={scaleMin}
+                                scaleMax={scaleMax}
+                                traits={traits}
+                                traitStats={previewTraitStats}
+                            />
+                        ) : (
+                            <UnidirectionalBarChart
+                                polarity={traitPolarity}
+                                scaleMin={scaleMin}
+                                scaleMax={scaleMax}
+                                traits={traits}
+                                traitStats={previewTraitStats}
+                            />
+                        )}
+                    </div>
                 </div>
             )}
         </QuizPreviewSurface>

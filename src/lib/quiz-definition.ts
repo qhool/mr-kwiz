@@ -72,6 +72,7 @@ export const displayConfigSchema = z
         completion_markdown: z.string().optional().meta({ description: 'Markdown shown after the quiz is completed.' }),
         result_scale_min: z.number().optional().meta({ description: 'Optional lower bound for result display scaling.' }),
         result_scale_max: z.number().optional().meta({ description: 'Optional upper bound for result display scaling.' }),
+        trait_polarity: z.enum(['bidirectional', 'unidirectional']).default('bidirectional').meta({ description: 'Whether traits display as bidirectional scales (centered) or unidirectional (0 to max).' }),
     })
     .meta({
         description: 'Display-oriented configuration for quiz presentation.',
@@ -451,6 +452,7 @@ export const createDefaultQuizDefinition = (title: string, description = ''): Qu
         },
         display_config: {
             intro_markdown: 'Configure traits before creating questions.',
+            trait_polarity: 'bidirectional',
         },
     };
 

@@ -82,6 +82,12 @@ export type RespondentSession = z.infer<typeof respondentSessionSchema>;
 export type RespondentAnswerRequest = z.infer<typeof respondentAnswerRequestSchema>;
 export type RespondentAnswerResponse = z.infer<typeof respondentAnswerResponseSchema>;
 
+export type TraitStatistics = {
+    estimate: number;
+    spread: number;
+    contradiction: number;
+};
+
 export type RespondentSessionScoreSummary = {
     answeredQuestions: Array<{
         answerId: string;
@@ -90,6 +96,7 @@ export type RespondentSessionScoreSummary = {
         selectedResponseIndex: number;
     }>;
     scores: Record<string, number>;
+    traitStats: Record<string, TraitStatistics>;
 };
 
 const hasWindow = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -194,6 +201,9 @@ export const computeRespondentScores = (
         .sort((left, right) => left.display_order - right.display_order)
         .map((trait) => trait.id);
     const scores = buildInitialTraitScores(definition.traits);
+    const traitAccumulators: Record<string, { weightSum: number; weightedScoreSum: number }> = Object.fromEntries(
+        traitIds.map((traitId) => [traitId, { weightSum: 0, weightedScoreSum: 0 }])
+    );
     const answeredQuestions: RespondentSessionScoreSummary['answeredQuestions'] = [];
 
     for (const answer of answers) {
@@ -217,9 +227,16 @@ export const computeRespondentScores = (
 
         for (const [traitIndex, traitId] of traitIds.entries()) {
             const matrixIndex = selectedResponseIndex * traitIds.length + traitIndex;
-            const contribution = question.score_matrix.values[matrixIndex] ?? 0;
-            contributionByTraitId[traitId] = contribution;
-            scores[traitId] = (scores[traitId] ?? 0) + contribution;
+            const score = question.score_matrix.values[matrixIndex] ?? 0;
+            const information = question.information_matrix.values[matrixIndex] ?? 0;
+            
+            contributionByTraitId[traitId] = score;
+            scores[traitId] = (scores[traitId] ?? 0) + score;
+            
+            // Accumulate for weighted statistics
+            const accum = traitAccumulators[traitId];
+            accum.weightSum += information;
+            accum.weightedScoreSum += information * score;
         }
 
         answeredQuestions.push({
@@ -230,9 +247,49 @@ export const computeRespondentScores = (
         });
     }
 
+    // Compute estimate and spread for each trait
+    const finalTraitStats: Record<string, TraitStatistics> = {};
+    for (const traitId of traitIds) {
+        const accum = traitAccumulators[traitId];
+        const estimate = accum.weightSum > 0 ? accum.weightedScoreSum / accum.weightSum : 0;
+        
+        // Compute variance using the estimate
+        let squaredErrorSum = 0;
+        for (const answer of answers) {
+            const question = definition.questions.find((entry) => entry.id === answer.question_id);
+            if (!question) continue;
+            
+            const orderedResponses = question.responses
+                .slice()
+                .sort((left, right) => left.display_order - right.display_order);
+            const selectedResponseIndex = orderedResponses.findIndex(
+                (response) => response.id === answer.answer_id
+            );
+            
+            if (selectedResponseIndex === -1) continue;
+            
+            const traitIndex = traitIds.indexOf(traitId);
+            const matrixIndex = selectedResponseIndex * traitIds.length + traitIndex;
+            const score = question.score_matrix.values[matrixIndex] ?? 0;
+            const information = question.information_matrix.values[matrixIndex] ?? 0;
+            
+            squaredErrorSum += information * Math.pow(score - estimate, 2);
+        }
+        
+        const contradiction = accum.weightSum > 0 ? squaredErrorSum / accum.weightSum : 0;
+        const spread = Math.sqrt(contradiction);
+        
+        finalTraitStats[traitId] = {
+            estimate,
+            spread,
+            contradiction,
+        };
+    }
+
     return {
         answeredQuestions,
         scores,
+        traitStats: finalTraitStats,
     };
 };
 

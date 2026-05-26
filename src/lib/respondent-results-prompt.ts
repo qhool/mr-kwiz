@@ -33,23 +33,27 @@ export const buildRespondentResultsPrompt = (
     });
 
     const traitLines = orderedTraits.map((trait) => {
+        const stat = scoreSummary.traitStats[trait.id];
         const strongIds = strongSignalQuestions[trait.id] ?? [];
+        const polarity = definition.display_config.trait_polarity ?? 'bidirectional';
 
         return [
             `- ${trait.label} (${trait.id})`,
             `  Description: ${trait.description || 'No description provided.'}`,
             `  Scale labels: low="${trait.low_label}", high="${trait.high_label}"`,
-            `  Score: ${(scoreSummary.scores[trait.id] ?? 0).toFixed(2)}`,
+            `  Polarity: ${polarity}`,
+            `  Estimate: ${stat?.estimate.toFixed(2) ?? '0.00'}`,
+            `  Spread (uncertainty): ${stat?.spread.toFixed(2) ?? '0.00'}`,
             `  Strong-signal question ids: ${strongIds.length > 0 ? strongIds.join(', ') : 'None'}`,
         ].join('\n');
     });
 
     const scoreTable = [
-        '| Trait | Score | Low Label | High Label |',
-        '| --- | ---: | --- | --- |',
+        '| Trait | Estimate | Low Label | High Label | Polarity |',
+        '| --- | ---: | --- | --- | --- |',
         ...orderedTraits.map(
             (trait) =>
-                `| ${escapeMarkdownCell(trait.label)} | ${(scoreSummary.scores[trait.id] ?? 0).toFixed(2)} | ${escapeMarkdownCell(trait.low_label)} | ${escapeMarkdownCell(trait.high_label)} |`
+                `| ${escapeMarkdownCell(trait.label)} | ${(scoreSummary.traitStats[trait.id]?.estimate ?? 0).toFixed(2)} | ${escapeMarkdownCell(trait.low_label)} | ${escapeMarkdownCell(trait.high_label)} | ${definition.display_config.trait_polarity ?? 'bidirectional'} |`
         ),
     ].join('\n');
 
@@ -66,6 +70,7 @@ export const buildRespondentResultsPrompt = (
         '',
         `Quiz title: ${definition.title}`,
         `Quiz description: ${definition.description || 'No description provided.'}`,
+        `Results interpretation: The results show estimated trait values based on weighted observations from responses. Spread values indicate uncertainty or variance in the estimate.`,
         '',
         '## Trait Scores',
         '',

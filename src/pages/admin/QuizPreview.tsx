@@ -10,6 +10,7 @@ import {
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
 import { quizDefinitionSchema, quizEditPatchSchema, type QuizDefinition } from '../../lib/quiz-definition';
+import type { TraitStatistics } from '../../lib/respondent-quiz';
 
 type AdminQuizResponse = {
     quiz: {
@@ -44,6 +45,10 @@ const buildInitialScores = (traitIds: string[], scaleMin: number, scaleMax: numb
     return Object.fromEntries(traitIds.map((traitId) => [traitId, midpoint]));
 };
 
+const buildInitialUncertainty = (traitIds: string[]) => {
+    return Object.fromEntries(traitIds.map((traitId) => [traitId, 0.25]));
+};
+
 const extractJsonCandidate = (rawText: string): string => {
     const trimmed = rawText.trim();
     const fencedBlocks = [...trimmed.matchAll(/```([a-zA-Z0-9_-]+)?\s*\n?([\s\S]*?)```/g)];
@@ -72,6 +77,7 @@ const QuizPreviewPage: React.FC = () => {
 
     const [selectedScreen, setSelectedScreen] = React.useState<PreviewScreen>({ type: 'intro' });
     const [previewScores, setPreviewScores] = React.useState<Record<string, number>>({});
+    const [previewUncertainty, setPreviewUncertainty] = React.useState<Record<string, number>>({});
     const [patchText, setPatchText] = React.useState('');
     const [isPatchBoxOpen, setIsPatchBoxOpen] = React.useState(false);
     const [isSubmittingPatch, setIsSubmittingPatch] = React.useState(false);
@@ -99,6 +105,18 @@ const QuizPreviewPage: React.FC = () => {
 
             return buildInitialScores(traitIds, scaleMin, scaleMax);
         });
+
+        setPreviewUncertainty((current) => {
+            const traitIds = definition.traits.map((trait) => trait.id);
+            const missingTrait = traitIds.some((traitId) => !(traitId in current));
+            const extraTrait = Object.keys(current).some((traitId) => !traitIds.includes(traitId));
+
+            if (!missingTrait && !extraTrait) {
+                return current;
+            }
+
+            return buildInitialUncertainty(traitIds);
+        });
     }, [definition]);
 
     React.useEffect(() => {
@@ -116,6 +134,33 @@ const QuizPreviewPage: React.FC = () => {
 
     const scaleMin = definition?.display_config.result_scale_min ?? -1;
     const scaleMax = definition?.display_config.result_scale_max ?? 1;
+    const scaleRange = Math.max(0.1, Math.abs(scaleMax - scaleMin));
+
+    const previewTraitStats = React.useMemo<Record<string, TraitStatistics>>(() => {
+        if (!definition) {
+            return {};
+        }
+
+        return Object.fromEntries(
+            definition.traits.map((trait) => {
+                const estimate = previewScores[trait.id] ?? (scaleMin + scaleMax) / 2;
+                const uncertaintyControl = previewUncertainty[trait.id] ?? 0;
+
+                // Intentionally overdrive the top end so 1.0 explores beyond realistic uncertainty.
+                const baseline = Math.max(Math.abs(estimate), scaleRange * 0.2);
+                const spread = Math.pow(uncertaintyControl, 1.15) * baseline * 3;
+
+                return [
+                    trait.id,
+                    {
+                        contradiction: spread * spread,
+                        estimate,
+                        spread,
+                    },
+                ];
+            })
+        );
+    }, [definition, previewScores, previewUncertainty, scaleMax, scaleMin, scaleRange]);
 
     const selectedQuestion =
         selectedScreen.type === 'question'
@@ -399,21 +444,41 @@ const QuizPreviewPage: React.FC = () => {
                             definition.traits.length > 0 ? (
                                 <div style={{ display: 'grid', gap: '0.8rem' }}>
                                     {definition.traits.map((trait) => (
-                                        <label key={trait.id} style={{ display: 'grid', gap: '0.35rem' }}>
-                                            <span style={{ color: '#4e3d24', fontSize: '0.92rem', fontWeight: 700 }}>{trait.label}</span>
-                                            <input
-                                                max={scaleMax}
-                                                min={scaleMin}
-                                                onChange={(event) => {
-                                                    const value = Number(event.target.value);
-                                                    setPreviewScores((current) => ({ ...current, [trait.id]: value }));
-                                                }}
-                                                step={0.05}
-                                                type="range"
-                                                value={previewScores[trait.id] ?? (scaleMin + scaleMax) / 2}
-                                            />
-                                            <span style={{ color: '#6b5734', fontSize: '0.84rem' }}>{(previewScores[trait.id] ?? (scaleMin + scaleMax) / 2).toFixed(2)}</span>
-                                        </label>
+                                        <div key={trait.id} style={{ background: '#f7f3e9', border: '1px solid #c8bfa9', borderRadius: 12, display: 'grid', gap: '0.5rem', padding: '0.65rem 0.75rem' }}>
+                                            <span style={{ color: '#3f3120', fontSize: '0.95rem', fontWeight: 700 }}>{trait.label}</span>
+                                            <label style={{ display: 'grid', gap: '0.3rem' }}>
+                                                <span style={{ color: '#4e3d24', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Estimate</span>
+                                                <input
+                                                    max={scaleMax}
+                                                    min={scaleMin}
+                                                    onChange={(event) => {
+                                                        const value = Number(event.target.value);
+                                                        setPreviewScores((current) => ({ ...current, [trait.id]: value }));
+                                                    }}
+                                                    step={0.05}
+                                                    type="range"
+                                                    value={previewScores[trait.id] ?? (scaleMin + scaleMax) / 2}
+                                                />
+                                                <span style={{ color: '#5a4a2f', fontSize: '0.82rem' }}>Value: {(previewScores[trait.id] ?? (scaleMin + scaleMax) / 2).toFixed(2)}</span>
+                                            </label>
+                                            <label style={{ display: 'grid', gap: '0.3rem' }}>
+                                                <span style={{ color: '#4e3d24', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Uncertainty Scale</span>
+                                                <input
+                                                    max={1}
+                                                    min={0}
+                                                    onChange={(event) => {
+                                                        const value = Number(event.target.value);
+                                                        setPreviewUncertainty((current) => ({ ...current, [trait.id]: value }));
+                                                    }}
+                                                    step={0.01}
+                                                    type="range"
+                                                    value={previewUncertainty[trait.id] ?? 0.25}
+                                                />
+                                                <span style={{ color: '#5a4a2f', fontSize: '0.82rem' }}>
+                                                    Control: {(previewUncertainty[trait.id] ?? 0.25).toFixed(2)} · Spread: {(previewTraitStats[trait.id]?.spread ?? 0).toFixed(2)}
+                                                </span>
+                                            </label>
+                                        </div>
                                     ))}
                                 </div>
                             ) : (
@@ -481,6 +546,8 @@ const QuizPreviewPage: React.FC = () => {
                             scaleMax={scaleMax}
                             scaleMin={scaleMin}
                             scores={previewScores}
+                            traitPolarity={definition.display_config.trait_polarity}
+                            traitStats={previewTraitStats}
                             traits={definition.traits}
                         />
                     ) : null}

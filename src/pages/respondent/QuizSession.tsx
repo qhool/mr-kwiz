@@ -168,6 +168,8 @@ const QuizSessionPage: React.FC = () => {
                             subtitle="Your answered questions have been scored using the quiz's trait matrix."
                             title="Your Results"
                             traits={definition.traits}
+                            traitStats={scoreSummary.traitStats}
+                            traitPolarity={definition.display_config.trait_polarity}
                         />
                         <div style={{ marginTop: '1rem' }}>
                             <button

@@ -30,12 +30,13 @@ Patch envelope accepted by the admin edit API.
 
 Display-oriented configuration for quiz presentation.
 
-| field               | type   | required | constraints | notes                                            |
-| ------------------- | ------ | -------- | ----------- | ------------------------------------------------ |
-| completion_markdown | string | no       |             | Markdown shown after the quiz is completed.      |
-| intro_markdown      | string | no       |             | Markdown shown before the quiz starts.           |
-| result_scale_max    | number | no       |             | Optional upper bound for result display scaling. |
-| result_scale_min    | number | no       |             | Optional lower bound for result display scaling. |
+| field               | type    | required | constraints | notes                                                                                   |
+| ------------------- | ------- | -------- | ----------- | --------------------------------------------------------------------------------------- |
+| completion_markdown | string  | no       |             | Markdown shown after the quiz is completed.                                             |
+| intro_markdown      | string  | no       |             | Markdown shown before the quiz starts.                                                  |
+| result_scale_max    | number  | no       |             | Optional upper bound for result display scaling.                                        |
+| result_scale_min    | number  | no       |             | Optional lower bound for result display scaling.                                        |
+| trait_polarity      | ZodEnum | no       | default     | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max). |
 
 ## ScoringConfig
 
