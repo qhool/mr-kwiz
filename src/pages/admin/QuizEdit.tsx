@@ -1,6 +1,7 @@
 import React from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
+import { AdminShell } from '../../components/admin-shell';
 import {
     quizDefinitionSchema,
     quizEditPatchSchema,
@@ -135,7 +136,7 @@ const QuizEditPage: React.FC = () => {
     };
 
     return (
-        <div style={{ margin: '0 auto', maxWidth: 1200, padding: '2rem 1.5rem' }}>
+        <AdminShell adminKey={adminKey} currentPage="edit" metadata={metadata}>
             <header style={{ marginBottom: '1.5rem' }}>
                 <h1 style={{ marginBottom: '0.5rem' }}>Quiz Builder</h1>
                 <p style={{ margin: 0 }}>
@@ -161,22 +162,6 @@ const QuizEditPage: React.FC = () => {
                     >
                         Copy LLM Skill Prompt
                     </button>
-                    {adminKey ? (
-                        <Link
-                            style={{
-                                alignItems: 'center',
-                                background: '#4d3b22',
-                                borderRadius: 999,
-                                color: '#f6f0df',
-                                display: 'inline-flex',
-                                padding: '0.75rem 1.25rem',
-                                textDecoration: 'none',
-                            }}
-                            to={`/admin/${encodeURIComponent(adminKey)}/preview`}
-                        >
-                            Open Preview
-                        </Link>
-                    ) : null}
                 </div>
             </header>
 
@@ -293,7 +278,7 @@ const QuizEditPage: React.FC = () => {
                     </form>
                 </section>
             </div>
-        </div>
+        </AdminShell>
     );
 };
 

@@ -6,6 +6,12 @@ import react from '@vitejs/plugin-react';
 import { cloudflare } from '@cloudflare/vite-plugin';
 
 import { handleAdminEditGet, handleAdminEditPost } from './functions/api/admin/handle-edit';
+import {
+  handleAdminInvitationDeactivatePost,
+  handleAdminInvitationPatch,
+  handleAdminInvitationsGet,
+  handleAdminInvitationsPost,
+} from './functions/api/admin/handle-invitations';
 
 const readDevVars = () => {
   const devVarsPath = path.resolve(process.cwd(), '.dev.vars');
@@ -44,6 +50,36 @@ const writeNodeResponse = async (
 };
 
 const adminEditPattern = /^\/api\/admin\/([^/]+)\/edit\/?$/;
+const adminInvitationsPattern = /^\/api\/admin\/([^/]+)\/invitations\/?$/;
+const adminInvitationDetailPattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/?$/;
+const adminInvitationDeactivatePattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/deactivate\/?$/;
+
+const readRequestBody = async (req: import('node:http').IncomingMessage): Promise<Buffer> => {
+  const chunks: Buffer[] = [];
+
+  await new Promise<void>((resolve, reject) => {
+    req.on('data', (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    req.on('end', () => resolve());
+    req.on('error', reject);
+  });
+
+  return Buffer.concat(chunks);
+};
+
+const buildNodeRequest = async (req: import('node:http').IncomingMessage, url: URL, method: string) => {
+  const body = await readRequestBody(req);
+
+  return new Request(url.toString(), {
+    method,
+    headers: new Headers(
+      Object.entries(req.headers)
+        .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
+    ),
+    body,
+  });
+};
 
 export default defineConfig({
   plugins: [
@@ -54,15 +90,58 @@ export default defineConfig({
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const url = req.url ? new URL(req.url, 'http://localhost:3000') : null;
-          const match = url?.pathname.match(adminEditPattern);
+          const deactivateMatch = url?.pathname.match(adminInvitationDeactivatePattern);
+          const invitationDetailMatch = url?.pathname.match(adminInvitationDetailPattern);
+          const invitationsMatch = url?.pathname.match(adminInvitationsPattern);
+          const editMatch = url?.pathname.match(adminEditPattern);
 
-          if (!url || !match) {
+          if (!url) {
             next();
             return;
           }
 
           const env = readDevVars();
-          const adminKey = decodeURIComponent(match[1]);
+
+          if (deactivateMatch && req.method === 'POST') {
+            const adminKey = decodeURIComponent(deactivateMatch[1]);
+            const invitationId = decodeURIComponent(deactivateMatch[2]);
+            const response = await handleAdminInvitationDeactivatePost(env, adminKey, invitationId);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (invitationDetailMatch && req.method === 'PATCH') {
+            const adminKey = decodeURIComponent(invitationDetailMatch[1]);
+            const invitationId = decodeURIComponent(invitationDetailMatch[2]);
+            const request = await buildNodeRequest(req, url, 'PATCH');
+            const response = await handleAdminInvitationPatch(env, adminKey, invitationId, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (invitationsMatch) {
+            const adminKey = decodeURIComponent(invitationsMatch[1]);
+
+            if (req.method === 'GET') {
+              const response = await handleAdminInvitationsGet(env, adminKey);
+              await writeNodeResponse(res, response);
+              return;
+            }
+
+            if (req.method === 'POST') {
+              const request = await buildNodeRequest(req, url, 'POST');
+              const response = await handleAdminInvitationsPost(env, adminKey, request);
+              await writeNodeResponse(res, response);
+              return;
+            }
+          }
+
+          if (!editMatch) {
+            next();
+            return;
+          }
+
+          const adminKey = decodeURIComponent(editMatch[1]);
 
           if (req.method === 'GET') {
             const response = await handleAdminEditGet(env, adminKey);
@@ -71,23 +150,7 @@ export default defineConfig({
           }
 
           if (req.method === 'POST') {
-            const chunks: Buffer[] = [];
-            await new Promise<void>((resolve, reject) => {
-              req.on('data', (chunk) => {
-                chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-              });
-              req.on('end', () => resolve());
-              req.on('error', reject);
-            });
-
-            const request = new Request(url.toString(), {
-              method: 'POST',
-              headers: new Headers(
-                Object.entries(req.headers)
-                  .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
-              ),
-              body: Buffer.concat(chunks),
-            });
+            const request = await buildNodeRequest(req, url, 'POST');
 
             const response = await handleAdminEditPost(env, adminKey, request);
             await writeNodeResponse(res, response);

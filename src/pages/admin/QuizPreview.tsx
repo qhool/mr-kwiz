@@ -1,6 +1,7 @@
 import React from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 
+import { AdminShell } from '../../components/admin-shell';
 import {
     QuizIntroScreen,
     QuizQuestionScreen,
@@ -24,15 +25,6 @@ type PreviewScreen =
     | { type: 'intro' }
     | { type: 'question'; questionId: string }
     | { type: 'results' };
-
-const navLinkStyle: React.CSSProperties = {
-    background: '#6a5032',
-    borderRadius: 999,
-    color: '#f6f0df',
-    display: 'inline-flex',
-    padding: '0.7rem 1.15rem',
-    textDecoration: 'none',
-};
 
 const screenButtonStyle = (isActive: boolean): React.CSSProperties => ({
     background: isActive ? '#6a5032' : 'rgba(255, 250, 240, 0.82)',
@@ -203,7 +195,7 @@ const QuizPreviewPage: React.FC = () => {
     };
 
     return (
-        <div style={{ margin: '0 auto', maxWidth: 1400, padding: '2rem 1.5rem' }}>
+        <AdminShell adminKey={adminKey} currentPage="preview" metadata={metadata}>
             <header style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.9rem', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                 <div>
                     <h1 style={{ marginBottom: '0.35rem' }}>Quiz Preview</h1>
@@ -232,7 +224,6 @@ const QuizPreviewPage: React.FC = () => {
                     >
                         {isPatchBoxOpen ? 'Close Patch Box' : 'Paste Patch'}
                     </button>
-                    {adminKey ? <Link style={navLinkStyle} to={`/admin/${encodeURIComponent(adminKey)}/edit`}>Back to Edit</Link> : null}
                 </div>
             </header>
 
@@ -495,7 +486,7 @@ const QuizPreviewPage: React.FC = () => {
                     ) : null}
                 </main>
             </div>
-        </div>
+        </AdminShell>
     );
 };
 
