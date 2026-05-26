@@ -2,16 +2,43 @@ import React from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import {
+    quizDefinitionSchema,
     quizEditPatchSchema,
+    type QuizDefinition,
     type QuizEditPatch,
 } from '../../lib/quiz-definition';
 import { renderAdminSkillPrompt } from '../../lib/admin-skill-prompt';
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 
+type AdminQuizResponse = {
+    quiz: {
+        current_definition_version: number;
+        description: string;
+        id: string;
+        title: string;
+    };
+    definition: QuizDefinition;
+};
+
+const extractJsonCandidate = (rawText: string): string => {
+    const trimmed = rawText.trim();
+    const fencedBlocks = [...trimmed.matchAll(/```([a-zA-Z0-9_-]+)?\s*\n?([\s\S]*?)```/g)];
+
+    if (fencedBlocks.length === 0) {
+        return trimmed;
+    }
+
+    const preferredBlock =
+        fencedBlocks.find((match) => (match[1] ?? '').toLowerCase() === 'json') ?? fencedBlocks[0];
+
+    return preferredBlock[2].trim();
+};
+
 const QuizEditPage: React.FC = () => {
     const { adminKey } = useParams<{ adminKey: string }>();
     const { definition, error, isLoading, metadata, setDefinition, setError, setMetadata } = useAdminQuizDefinition(adminKey);
     const [patchText, setPatchText] = React.useState('');
+    const [copiedSkillBaselineVersion, setCopiedSkillBaselineVersion] = React.useState<number | null>(null);
     const [message, setMessage] = React.useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
 
@@ -40,7 +67,10 @@ const QuizEditPage: React.FC = () => {
         try {
             const prompt = renderAdminSkillPrompt(definition, metadata);
             await navigator.clipboard.writeText(prompt);
-            setMessage('Copied skill prompt to clipboard.');
+            setCopiedSkillBaselineVersion(metadata.current_definition_version);
+            setMessage(
+                `Copied skill prompt to clipboard. Chat baseline locked to definition version ${metadata.current_definition_version}.`
+            );
         } catch (copyError) {
             setError(formatError(copyError));
         }
@@ -58,10 +88,29 @@ const QuizEditPage: React.FC = () => {
 
         try {
             setIsSubmitting(true);
-            const parsedPatch = quizEditPatchSchema.parse(JSON.parse(patchText)) as QuizEditPatch;
+            const parsedPatch = quizEditPatchSchema.parse(JSON.parse(extractJsonCandidate(patchText))) as QuizEditPatch;
+
+            if (
+                copiedSkillBaselineVersion !== null &&
+                parsedPatch.base_definition_version < copiedSkillBaselineVersion
+            ) {
+                throw new Error(
+                    `This patch was generated from an older baseline than the copied skill prompt (expected at least version ${copiedSkillBaselineVersion}). Copy the skill again into a new chat and regenerate the edit.`
+                );
+            }
+
+            const patchToSubmit: QuizEditPatch =
+                copiedSkillBaselineVersion !== null &&
+                parsedPatch.base_definition_version === copiedSkillBaselineVersion &&
+                metadata
+                    ? {
+                          ...parsedPatch,
+                          base_definition_version: metadata.current_definition_version,
+                      }
+                    : parsedPatch;
 
             const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/edit`, {
-                body: JSON.stringify(parsedPatch),
+                body: JSON.stringify(patchToSubmit),
                 headers: {
                     'content-type': 'application/json',
                 },
@@ -190,13 +239,19 @@ const QuizEditPage: React.FC = () => {
                 <section>
                     <h2>Paste-Back Patch</h2>
                     <form onSubmit={handleSubmit}>
+                        {copiedSkillBaselineVersion !== null ? (
+                            <p style={{ color: '#6b5734', marginTop: 0 }}>
+                                Current chat baseline: definition version {copiedSkillBaselineVersion}
+                            </p>
+                        ) : null}
                         <textarea
                             aria-label="Quiz edit patch JSON"
                             disabled={isLoading || isSubmitting}
                             onChange={(event) => setPatchText(event.target.value)}
                             placeholder={JSON.stringify(
                                 {
-                                    base_definition_version: metadata?.current_definition_version ?? 1,
+                                    base_definition_version:
+                                        copiedSkillBaselineVersion ?? metadata?.current_definition_version ?? 1,
                                     operations: [
                                         {
                                             op: 'update_quiz_metadata',

@@ -7,6 +7,18 @@ import {
     QuizResultsScreen,
 } from '../../components/quiz-preview';
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
+import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
+import { quizDefinitionSchema, quizEditPatchSchema, type QuizDefinition } from '../../lib/quiz-definition';
+
+type AdminQuizResponse = {
+    quiz: {
+        current_definition_version: number;
+        description: string;
+        id: string;
+        title: string;
+    };
+    definition: QuizDefinition;
+};
 
 type PreviewScreen =
     | { type: 'intro' }
@@ -40,12 +52,38 @@ const buildInitialScores = (traitIds: string[], scaleMin: number, scaleMax: numb
     return Object.fromEntries(traitIds.map((traitId) => [traitId, midpoint]));
 };
 
+const extractJsonCandidate = (rawText: string): string => {
+    const trimmed = rawText.trim();
+    const fencedBlocks = [...trimmed.matchAll(/```([a-zA-Z0-9_-]+)?\s*\n?([\s\S]*?)```/g)];
+
+    if (fencedBlocks.length === 0) {
+        return trimmed;
+    }
+
+    const preferredBlock =
+        fencedBlocks.find((match) => (match[1] ?? '').toLowerCase() === 'json') ?? fencedBlocks[0];
+
+    return preferredBlock[2].trim();
+};
+
 const QuizPreviewPage: React.FC = () => {
     const { adminKey } = useParams<{ adminKey: string }>();
-    const { definition, error, isLoading, metadata, setError } = useAdminQuizDefinition(adminKey);
+    const {
+        definition,
+        error,
+        isLoading,
+        metadata,
+        setDefinition,
+        setError,
+        setMetadata,
+    } = useAdminQuizDefinition(adminKey);
 
     const [selectedScreen, setSelectedScreen] = React.useState<PreviewScreen>({ type: 'intro' });
     const [previewScores, setPreviewScores] = React.useState<Record<string, number>>({});
+    const [patchText, setPatchText] = React.useState('');
+    const [isPatchBoxOpen, setIsPatchBoxOpen] = React.useState(false);
+    const [isSubmittingPatch, setIsSubmittingPatch] = React.useState(false);
+    const [message, setMessage] = React.useState<string | null>(null);
 
     const questionScreens = React.useMemo(() => {
         return definition?.questions.map((question) => ({ type: 'question' as const, questionId: question.id })) ?? [];
@@ -92,6 +130,78 @@ const QuizPreviewPage: React.FC = () => {
             ? definition?.questions.find((question) => question.id === selectedScreen.questionId) ?? null
             : null;
 
+    const handleCopyQuestionEditPrompt = async () => {
+        setError(null);
+        setMessage(null);
+        setIsPatchBoxOpen(true);
+
+        if (!selectedQuestion) {
+            setError('No question is currently selected for editing.');
+            return;
+        }
+
+        if (!navigator.clipboard?.writeText) {
+            setError('Clipboard API is not available in this browser context.');
+            return;
+        }
+
+        try {
+            if (!metadata) {
+                setError('Quiz metadata is not loaded yet.');
+                return;
+            }
+
+            const prompt = await buildAdminQuestionEditPrompt(
+                selectedQuestion,
+                metadata.current_definition_version
+            );
+            await navigator.clipboard.writeText(prompt);
+            setMessage('Copied replace-question patch prompt to clipboard. Paste it into your current LLM session.');
+        } catch (copyError) {
+            setError(copyError instanceof Error ? copyError.message : 'Failed to copy the question edit prompt.');
+        }
+    };
+
+    const handleApplyPatch = async (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        setError(null);
+        setMessage(null);
+
+        if (!adminKey) {
+            setError('Missing admin key.');
+            return;
+        }
+
+        try {
+            setIsSubmittingPatch(true);
+            const parsedPatch = quizEditPatchSchema.parse(JSON.parse(extractJsonCandidate(patchText)));
+
+            const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/edit`, {
+                body: JSON.stringify(parsedPatch),
+                headers: {
+                    'content-type': 'application/json',
+                },
+                method: 'POST',
+            });
+
+            const body = (await response.json()) as Partial<AdminQuizResponse> & { error?: string };
+            if (!response.ok) {
+                throw new Error(body.error ?? 'Failed to apply patch.');
+            }
+
+            const parsedDefinition = quizDefinitionSchema.parse(body.definition);
+            setDefinition(parsedDefinition);
+            setMetadata(body.quiz as AdminQuizResponse['quiz']);
+            setPatchText('');
+            setIsPatchBoxOpen(false);
+            setMessage('Patch applied successfully.');
+        } catch (submitError) {
+            setError(submitError instanceof Error ? submitError.message : 'Unknown error.');
+        } finally {
+            setIsSubmittingPatch(false);
+        }
+    };
+
     return (
         <div style={{ margin: '0 auto', maxWidth: 1400, padding: '2rem 1.5rem' }}>
             <header style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.9rem', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
@@ -103,7 +213,27 @@ const QuizPreviewPage: React.FC = () => {
                             : 'Loading quiz definition...'}
                     </p>
                 </div>
-                {adminKey ? <Link style={navLinkStyle} to={`/admin/${encodeURIComponent(adminKey)}/edit`}>Back to Edit</Link> : null}
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                    <button
+                        onClick={() => {
+                            setError(null);
+                            setMessage(null);
+                            setIsPatchBoxOpen((current) => !current);
+                        }}
+                        style={{
+                            background: isPatchBoxOpen ? '#4d3b22' : '#6a5032',
+                            border: 'none',
+                            borderRadius: 999,
+                            color: '#f6f0df',
+                            cursor: 'pointer',
+                            padding: '0.7rem 1.15rem',
+                        }}
+                        type="button"
+                    >
+                        {isPatchBoxOpen ? 'Close Patch Box' : 'Paste Patch'}
+                    </button>
+                    {adminKey ? <Link style={navLinkStyle} to={`/admin/${encodeURIComponent(adminKey)}/edit`}>Back to Edit</Link> : null}
+                </div>
             </header>
 
             {error ? (
@@ -119,6 +249,118 @@ const QuizPreviewPage: React.FC = () => {
                 >
                     {error}
                 </div>
+            ) : null}
+
+            {message ? (
+                <div
+                    style={{
+                        background: '#edf7ed',
+                        border: '1px solid #5a8f5a',
+                        color: '#1f4f1f',
+                        marginBottom: '1rem',
+                        padding: '0.75rem 1rem',
+                    }}
+                >
+                    {message}
+                </div>
+            ) : null}
+
+            {isPatchBoxOpen ? (
+                <section
+                    style={{
+                        background: 'rgba(255, 250, 240, 0.9)',
+                        border: '1px solid #c8bfa9',
+                        borderRadius: 18,
+                        marginBottom: '1.5rem',
+                        padding: '1rem',
+                    }}
+                >
+                    <div style={{ alignItems: 'center', display: 'flex', gap: '0.75rem', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                        <div>
+                            <h2 style={{ fontSize: '1rem', margin: 0 }}>Paste Patch</h2>
+                            <p style={{ color: '#5d4b30', margin: '0.35rem 0 0' }}>
+                                Paste a patch returned from chat. Fenced JSON blocks are accepted.
+                            </p>
+                        </div>
+                        <button
+                            onClick={() => setIsPatchBoxOpen(false)}
+                            style={{
+                                background: 'transparent',
+                                border: '1px solid #b7ab91',
+                                borderRadius: 999,
+                                color: '#4a3922',
+                                cursor: 'pointer',
+                                padding: '0.55rem 0.9rem',
+                            }}
+                            type="button"
+                        >
+                            Close
+                        </button>
+                    </div>
+                    <form onSubmit={handleApplyPatch}>
+                        <textarea
+                            aria-label="Quiz edit patch JSON"
+                            disabled={isLoading || isSubmittingPatch}
+                            onChange={(event) => setPatchText(event.target.value)}
+                            placeholder={JSON.stringify(
+                                {
+                                    base_definition_version: metadata?.current_definition_version ?? 1,
+                                    operations: [
+                                        {
+                                            op: 'update_quiz_metadata',
+                                            title: 'Refined quiz title',
+                                        },
+                                    ],
+                                },
+                                null,
+                                2
+                            )}
+                            spellCheck={false}
+                            style={{
+                                border: '1px solid #c8bfa9',
+                                borderRadius: 12,
+                                fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+                                fontSize: '0.95rem',
+                                minHeight: '14rem',
+                                padding: '1rem',
+                                resize: 'vertical',
+                                width: '100%',
+                            }}
+                            value={patchText}
+                        />
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
+                            <button
+                                disabled={isLoading || isSubmittingPatch || patchText.trim().length === 0}
+                                style={{
+                                    background: '#30291f',
+                                    border: 'none',
+                                    borderRadius: 999,
+                                    color: '#f6f0df',
+                                    cursor: 'pointer',
+                                    padding: '0.75rem 1.25rem',
+                                }}
+                                type="submit"
+                            >
+                                {isSubmittingPatch ? 'Applying…' : 'Apply Patch'}
+                            </button>
+                            <button
+                                disabled={isSubmittingPatch}
+                                onClick={() => setIsPatchBoxOpen(false)}
+                                style={{
+                                    background: '#e9dfc8',
+                                    border: '1px solid #b7ab91',
+                                    borderRadius: 999,
+                                    color: '#4a3922',
+                                    cursor: 'pointer',
+                                    padding: '0.75rem 1.25rem',
+                                }}
+                                type="button"
+                            >
+                                Cancel
+                            </button>
+                        </div>
+                    </form>
+                </section>
             ) : null}
 
             <div style={{ display: 'grid', gap: '1.5rem', gridTemplateColumns: '320px minmax(0, 1fr)' }}>
@@ -203,6 +445,34 @@ const QuizPreviewPage: React.FC = () => {
                             }}
                         >
                             Loading preview...
+                        </div>
+                    ) : null}
+
+                    {!isLoading && definition && selectedScreen.type === 'question' && selectedQuestion ? (
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
+                            <button
+                                onClick={() => {
+                                    void handleCopyQuestionEditPrompt();
+                                }}
+                                style={{
+                                    alignItems: 'center',
+                                    background: '#6a5032',
+                                    border: 'none',
+                                    borderRadius: 999,
+                                    color: '#f6f0df',
+                                    cursor: 'pointer',
+                                    display: 'inline-flex',
+                                    gap: '0.55rem',
+                                    padding: '0.7rem 1rem',
+                                }}
+                                type="button"
+                            >
+                                <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
+                                    <path d="M4 20h4l10.5-10.5a1.414 1.414 0 0 0 0-2L16.5 5a1.414 1.414 0 0 0-2 0L4 15.5V20Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                                    <path d="m13.5 6 4.5 4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+                                </svg>
+                                Edit This Question in Chat
+                            </button>
                         </div>
                     ) : null}
 
