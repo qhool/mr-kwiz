@@ -4,12 +4,12 @@ import { useParams } from 'react-router-dom';
 import { AdminShell } from '../../components/admin-shell';
 import {
     QuizIntroScreen,
-    QuizQuestionScreen,
     QuizResultsScreen,
 } from '../../components/quiz-preview';
+import { AdminPreviewQuestionsPanel } from '../../components/admin-preview-questions-panel';
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
-import { quizDefinitionSchema, quizEditPatchSchema, type QuizDefinition } from '../../lib/quiz-definition';
+import { quizDefinitionSchema, quizEditPatchSchema, type Question, type QuizDefinition } from '../../lib/quiz-definition';
 import { selectArchetype, type TraitStatistics } from '../../lib/respondent-quiz';
 
 type AdminQuizResponse = {
@@ -24,7 +24,7 @@ type AdminQuizResponse = {
 
 type PreviewScreen =
     | { type: 'intro' }
-    | { type: 'question'; questionId: string }
+    | { type: 'questions' }
     | { type: 'results' };
 
 const screenButtonStyle = (isActive: boolean): React.CSSProperties => ({
@@ -83,10 +83,6 @@ const QuizPreviewPage: React.FC = () => {
     const [isSubmittingPatch, setIsSubmittingPatch] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
 
-    const questionScreens = React.useMemo(() => {
-        return definition?.questions.map((question) => ({ type: 'question' as const, questionId: question.id })) ?? [];
-    }, [definition]);
-
     React.useEffect(() => {
         if (!definition) {
             return;
@@ -118,19 +114,6 @@ const QuizPreviewPage: React.FC = () => {
             return buildInitialUncertainty(traitIds);
         });
     }, [definition]);
-
-    React.useEffect(() => {
-        if (!definition) {
-            return;
-        }
-
-        if (selectedScreen.type === 'question') {
-            const exists = definition.questions.some((question) => question.id === selectedScreen.questionId);
-            if (!exists) {
-                setSelectedScreen(definition.questions.length > 0 ? { type: 'question', questionId: definition.questions[0].id } : { type: 'intro' });
-            }
-        }
-    }, [definition, selectedScreen]);
 
     const scaleMin = definition?.display_config.result_scale_min ?? -1;
     const scaleMax = definition?.display_config.result_scale_max ?? 1;
@@ -170,20 +153,10 @@ const QuizPreviewPage: React.FC = () => {
         return selectArchetype(definition, previewTraitStats);
     }, [definition, previewTraitStats]);
 
-    const selectedQuestion =
-        selectedScreen.type === 'question'
-            ? definition?.questions.find((question) => question.id === selectedScreen.questionId) ?? null
-            : null;
-
-    const handleCopyQuestionEditPrompt = async () => {
+    const handleCopyQuestionEditPrompt = async (question: Question) => {
         setError(null);
         setMessage(null);
         setIsPatchBoxOpen(true);
-
-        if (!selectedQuestion) {
-            setError('No question is currently selected for editing.');
-            return;
-        }
 
         if (!navigator.clipboard?.writeText) {
             setError('Clipboard API is not available in this browser context.');
@@ -197,7 +170,7 @@ const QuizPreviewPage: React.FC = () => {
             }
 
             const prompt = await buildAdminQuestionEditPrompt(
-                selectedQuestion,
+                question,
                 metadata.current_definition_version
             );
             await navigator.clipboard.writeText(prompt);
@@ -422,16 +395,9 @@ const QuizPreviewPage: React.FC = () => {
                             <button onClick={() => setSelectedScreen({ type: 'intro' })} style={screenButtonStyle(selectedScreen.type === 'intro')} type="button">
                                 Intro
                             </button>
-                            {questionScreens.map((screen, index) => (
-                                <button
-                                    key={screen.questionId}
-                                    onClick={() => setSelectedScreen(screen)}
-                                    style={screenButtonStyle(selectedScreen.type === 'question' && selectedScreen.questionId === screen.questionId)}
-                                    type="button"
-                                >
-                                    Question {index + 1}
-                                </button>
-                            ))}
+                            <button onClick={() => setSelectedScreen({ type: 'questions' })} style={screenButtonStyle(selectedScreen.type === 'questions')} type="button">
+                                Questions
+                            </button>
                             <button onClick={() => setSelectedScreen({ type: 'results' })} style={screenButtonStyle(selectedScreen.type === 'results')} type="button">
                                 Results
                             </button>
@@ -512,40 +478,11 @@ const QuizPreviewPage: React.FC = () => {
                         </div>
                     ) : null}
 
-                    {!isLoading && definition && selectedScreen.type === 'question' && selectedQuestion ? (
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '1rem' }}>
-                            <button
-                                onClick={() => {
-                                    void handleCopyQuestionEditPrompt();
-                                }}
-                                style={{
-                                    alignItems: 'center',
-                                    background: '#6a5032',
-                                    border: 'none',
-                                    borderRadius: 999,
-                                    color: '#f6f0df',
-                                    cursor: 'pointer',
-                                    display: 'inline-flex',
-                                    gap: '0.55rem',
-                                    padding: '0.7rem 1rem',
-                                }}
-                                type="button"
-                            >
-                                <svg aria-hidden="true" fill="none" height="16" viewBox="0 0 24 24" width="16">
-                                    <path d="M4 20h4l10.5-10.5a1.414 1.414 0 0 0 0-2L16.5 5a1.414 1.414 0 0 0-2 0L4 15.5V20Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-                                    <path d="m13.5 6 4.5 4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-                                </svg>
-                                Edit This Question in Chat
-                            </button>
-                        </div>
-                    ) : null}
-
                     {!isLoading && definition && selectedScreen.type === 'intro' ? <QuizIntroScreen definition={definition} /> : null}
-                    {!isLoading && definition && selectedScreen.type === 'question' ? (
-                        <QuizQuestionScreen
-                            question={selectedQuestion}
-                            questionCount={definition.questions.length}
-                            questionIndex={Math.max(0, definition.questions.findIndex((question) => question.id === selectedScreen.questionId))}
+                    {!isLoading && definition && selectedScreen.type === 'questions' ? (
+                        <AdminPreviewQuestionsPanel
+                            definition={definition}
+                            onCopyQuestionEditPrompt={handleCopyQuestionEditPrompt}
                         />
                     ) : null}
                     {!isLoading && definition && selectedScreen.type === 'results' ? (
