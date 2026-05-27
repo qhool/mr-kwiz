@@ -49,6 +49,7 @@ const getInvitationByKey = async (env: Partial<AppEnv>, invitationKey: string) =
             'use_count',
             'expires_at',
             'revoked_at',
+            'result_sharing_mode',
             'deleted_at',
             'created_at',
             'updated_at',
@@ -75,6 +76,44 @@ const assertInvitationIsUsable = (invitation: InvitationRow) => {
     if (status !== 'active') {
         throw new Error(`Invitation is not usable (${status}).`);
     }
+};
+
+const shouldAutoCreateViewKey = (resultSharingMode: InvitationRow['result_sharing_mode']) => {
+    return resultSharingMode === 'opt_out' || resultSharingMode === 'mandatory';
+};
+
+const insertResponseViewKey = async (
+    supabase: ReturnType<typeof createServerSupabaseClient>,
+    input: {
+        expires_at?: string | null;
+        invitation_id: string | null;
+        label?: string;
+        notes?: string;
+        response_id: string;
+    }
+) => {
+    const viewKey = generateCapabilityToken();
+    const { data, error } = await supabase
+        .from('quiz_response_view_keys')
+        .insert({
+            expires_at: input.expires_at ?? null,
+            invitation_id: input.invitation_id,
+            label: input.label ?? '',
+            notes: input.notes ?? '',
+            response_id: input.response_id,
+            view_key: viewKey,
+        })
+        .select('*')
+        .single();
+
+    if (error) {
+        throw error;
+    }
+
+    return {
+        record: responseViewKeySchema.parse(data),
+        viewKey,
+    };
 };
 
 const ensureQuizSnapshot = async (
@@ -240,7 +279,6 @@ export const handleRespondentInvitationPickupPost = async (
             .from('quiz_responses')
             .insert({
                 current_question_id: getNextQuestionId(definition, []),
-                invitation_id: invitation.id,
                 quiz_id: invitation.quiz_id,
                 response_key_digest: responseKeyDigest,
                 snapshot_id: snapshot.id,
@@ -251,6 +289,13 @@ export const handleRespondentInvitationPickupPost = async (
 
         if (insertedResponse.error) {
             throw insertedResponse.error;
+        }
+
+        if (shouldAutoCreateViewKey(invitation.result_sharing_mode)) {
+            await insertResponseViewKey(supabase, {
+                invitation_id: invitation.id,
+                response_id: insertedResponse.data.id,
+            });
         }
 
         const updatedInvitation = await supabase
@@ -437,24 +482,14 @@ export const handleRespondentViewKeyPost = async (
         }
 
         const payload = createResponseViewKeyRequestSchema.parse(await request.json());
-        const viewKey = generateCapabilityToken();
-        const { data, error } = await supabase
-            .from('quiz_response_view_keys')
-            .insert({
-                expires_at: payload.expires_at,
-                response_id: response.id,
-                view_key: viewKey,
-                label: payload.label,
-                notes: payload.notes,
-            })
-            .select('*')
-            .single();
+        const { record: parsed, viewKey } = await insertResponseViewKey(supabase, {
+            expires_at: payload.expires_at,
+            invitation_id: null,
+            label: payload.label,
+            notes: payload.notes,
+            response_id: response.id,
+        });
 
-        if (error) {
-            throw error;
-        }
-
-        const parsed = responseViewKeySchema.parse(data);
         return json(
             {
                 view_key_record: parsed,

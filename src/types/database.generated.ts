@@ -77,6 +77,7 @@ export type Database = {
           label: string
           max_uses: number | null
           quiz_id: string
+          result_sharing_mode: Database["public"]["Enums"]["result_sharing_mode"]
           revoked_at: string | null
           updated_at: string
           use_count: number
@@ -91,6 +92,7 @@ export type Database = {
           label?: string
           max_uses?: number | null
           quiz_id: string
+          result_sharing_mode?: Database["public"]["Enums"]["result_sharing_mode"]
           revoked_at?: string | null
           updated_at?: string
           use_count?: number
@@ -105,6 +107,7 @@ export type Database = {
           label?: string
           max_uses?: number | null
           quiz_id?: string
+          result_sharing_mode?: Database["public"]["Enums"]["result_sharing_mode"]
           revoked_at?: string | null
           updated_at?: string
           use_count?: number
@@ -169,6 +172,7 @@ export type Database = {
           deleted_at: string | null
           expires_at: string | null
           id: string
+          invitation_id: string | null
           label: string
           last_viewed_at: string | null
           notes: string
@@ -182,6 +186,7 @@ export type Database = {
           deleted_at?: string | null
           expires_at?: string | null
           id?: string
+          invitation_id?: string | null
           label?: string
           last_viewed_at?: string | null
           notes?: string
@@ -195,6 +200,7 @@ export type Database = {
           deleted_at?: string | null
           expires_at?: string | null
           id?: string
+          invitation_id?: string | null
           label?: string
           last_viewed_at?: string | null
           notes?: string
@@ -204,6 +210,13 @@ export type Database = {
           view_key?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "quiz_response_view_keys_invitation_id_fkey"
+            columns: ["invitation_id"]
+            isOneToOne: false
+            referencedRelation: "quiz_invitations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "quiz_response_view_keys_response_id_fkey"
             columns: ["response_id"]
@@ -218,7 +231,6 @@ export type Database = {
           current_question_id: string | null
           deleted_at: string | null
           id: string
-          invitation_id: string | null
           last_seen_at: string
           quiz_id: string
           respondent_label: string
@@ -234,7 +246,6 @@ export type Database = {
           current_question_id?: string | null
           deleted_at?: string | null
           id?: string
-          invitation_id?: string | null
           last_seen_at?: string
           quiz_id: string
           respondent_label?: string
@@ -250,7 +261,6 @@ export type Database = {
           current_question_id?: string | null
           deleted_at?: string | null
           id?: string
-          invitation_id?: string | null
           last_seen_at?: string
           quiz_id?: string
           respondent_label?: string
@@ -263,13 +273,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
-          {
-            foreignKeyName: "quiz_responses_invitation_id_fkey"
-            columns: ["invitation_id"]
-            isOneToOne: false
-            referencedRelation: "quiz_invitations"
-            referencedColumns: ["id"]
-          },
           {
             foreignKeyName: "quiz_responses_quiz_id_fkey"
             columns: ["quiz_id"]
@@ -330,7 +333,7 @@ export type Database = {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
+      result_sharing_mode: "off" | "opt_in" | "opt_out" | "mandatory"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -460,7 +463,9 @@ export const Constants = {
     Enums: {},
   },
   public: {
-    Enums: {},
+    Enums: {
+      result_sharing_mode: ["off", "opt_in", "opt_out", "mandatory"],
+    },
   },
 } as const
 

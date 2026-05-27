@@ -10,6 +10,7 @@ import {
     quizInvitationSchema,
     type QuizInvitation,
 } from '../../lib/admin-invitations';
+import { buildViewUrl } from '../../lib/view-keys';
 
 type InvitationResponse = {
     error?: string;
@@ -57,6 +58,22 @@ const statusLabelByState: Record<ReturnType<typeof getQuizInvitationStatus>, str
     expired: 'Expired',
 };
 
+const sharingModeLabels: Record<QuizInvitation['result_sharing_mode'], string> = {
+    off: 'Off',
+    opt_in: 'Opt in',
+    opt_out: 'Opt out',
+    mandatory: 'Mandatory',
+};
+
+const sharingModeDescriptions: Record<QuizInvitation['result_sharing_mode'], string> = {
+    off: 'Never auto-create a shared result link.',
+    opt_in: 'Leave sharing disabled unless explicitly enabled here.',
+    opt_out: 'Create a shared result link when the quiz starts.',
+    mandatory: 'Always create a shared result link and keep sharing enabled.',
+};
+
+const sharingModeOptions: QuizInvitation['result_sharing_mode'][] = ['off', 'opt_in', 'opt_out', 'mandatory'];
+
 const statusStyle = (status: ReturnType<typeof getQuizInvitationStatus>): React.CSSProperties => {
     const palette = {
         active: { background: '#e5f4df', border: '#84ad6a', color: '#20481f' },
@@ -83,12 +100,14 @@ const QuizInvitationsPage: React.FC = () => {
 
     const [invitations, setInvitations] = React.useState<QuizInvitation[]>([]);
     const [draftMaxUses, setDraftMaxUses] = React.useState<Record<string, string>>({});
+    const [draftSharingModes, setDraftSharingModes] = React.useState<Record<string, QuizInvitation['result_sharing_mode']>>({});
     const [message, setMessage] = React.useState<string | null>(null);
     const [pageError, setPageError] = React.useState<string | null>(null);
     const [isLoadingInvitations, setIsLoadingInvitations] = React.useState(true);
     const [isCreateModalOpen, setIsCreateModalOpen] = React.useState(false);
     const [createLabel, setCreateLabel] = React.useState('');
     const [createMaxUses, setCreateMaxUses] = React.useState('');
+    const [createSharingMode, setCreateSharingMode] = React.useState<QuizInvitation['result_sharing_mode']>('off');
     const [busyInvitationId, setBusyInvitationId] = React.useState<string | null>(null);
     const [isCreating, setIsCreating] = React.useState(false);
 
@@ -100,6 +119,9 @@ const QuizInvitationsPage: React.FC = () => {
                     invitation.max_uses === null ? '' : String(invitation.max_uses),
                 ])
             )
+        );
+        setDraftSharingModes(
+            Object.fromEntries(nextInvitations.map((invitation) => [invitation.id, invitation.result_sharing_mode]))
         );
     }, []);
 
@@ -139,6 +161,15 @@ const QuizInvitationsPage: React.FC = () => {
         setIsCreateModalOpen(false);
         setCreateLabel('');
         setCreateMaxUses('');
+        setCreateSharingMode('off');
+    };
+
+    const copyText = async (text: string) => {
+        if (!navigator.clipboard?.writeText) {
+            throw new Error('Clipboard API is not available in this browser context.');
+        }
+
+        await navigator.clipboard.writeText(text);
     };
 
     const handleCopyLink = async (invitation: QuizInvitation) => {
@@ -151,7 +182,7 @@ const QuizInvitationsPage: React.FC = () => {
         }
 
         try {
-            await navigator.clipboard.writeText(buildInvitationUrl(invitation.invitation_key, window.location.origin));
+            await copyText(buildInvitationUrl(invitation.invitation_key, window.location.origin));
             setMessage('Copied invitation link to clipboard.');
         } catch (error) {
             setPageError(formatError(error));
@@ -174,6 +205,7 @@ const QuizInvitationsPage: React.FC = () => {
                 body: JSON.stringify({
                     label: createLabel.trim(),
                     max_uses: normalizeMaxUsesInput(createMaxUses),
+                    result_sharing_mode: createSharingMode,
                 }),
                 headers: {
                     'content-type': 'application/json',
@@ -213,6 +245,7 @@ const QuizInvitationsPage: React.FC = () => {
             const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/invitations/${encodeURIComponent(invitationId)}`, {
                 body: JSON.stringify({
                     max_uses: normalizeMaxUsesInput(draftMaxUses[invitationId] ?? ''),
+                    result_sharing_mode: draftSharingModes[invitationId] ?? 'off',
                 }),
                 headers: {
                     'content-type': 'application/json',
@@ -366,6 +399,21 @@ const QuizInvitationsPage: React.FC = () => {
                                     value={createMaxUses}
                                 />
                             </label>
+                            <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '1rem' }}>
+                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>Result Sharing</span>
+                                <select
+                                    onChange={(event) => setCreateSharingMode(event.target.value as QuizInvitation['result_sharing_mode'])}
+                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    value={createSharingMode}
+                                >
+                                    {sharingModeOptions.map((mode) => (
+                                        <option key={mode} value={mode}>
+                                            {sharingModeLabels[mode]}
+                                        </option>
+                                    ))}
+                                </select>
+                                <div style={{ color: '#6b5734', fontSize: '0.88rem' }}>{sharingModeDescriptions[createSharingMode]}</div>
+                            </label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
                                 <button
                                     disabled={isCreating}
@@ -401,7 +449,7 @@ const QuizInvitationsPage: React.FC = () => {
                         const isBusy = busyInvitationId === invitation.id;
 
                         return (
-                            <article key={invitation.id} style={{ background: '#fffaf0', border: '1px solid #d7ccb4', borderRadius: 16, display: 'grid', gap: '1rem', padding: '1rem' }}>
+                            <article key={invitation.id} style={{ background: '#fffaf0', border: '1px solid #d7ccb4', borderRadius: 16, display: 'grid', gap: '0.85rem', padding: '1rem' }}>
                                 <div style={{ alignItems: 'flex-start', display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
                                     <div>
                                         <div style={{ fontSize: '1.02rem', fontWeight: 700, marginBottom: '0.35rem' }}>
@@ -412,7 +460,7 @@ const QuizInvitationsPage: React.FC = () => {
                                     <span style={statusStyle(status)}>{statusLabelByState[status]}</span>
                                 </div>
 
-                                <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                                <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
                                     <div>
                                         <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Uses</div>
                                         <div style={{ fontWeight: 700 }}>{invitation.use_count}</div>
@@ -422,12 +470,16 @@ const QuizInvitationsPage: React.FC = () => {
                                         <div style={{ fontWeight: 700 }}>{invitation.max_uses === null ? 'Unlimited' : invitation.max_uses}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Link Target</div>
-                                        <div style={{ fontSize: '0.92rem', wordBreak: 'break-all' }}>/invite/{invitation.invitation_key}</div>
+                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Sharing Mode</div>
+                                        <div style={{ fontWeight: 700 }}>{sharingModeLabels[invitation.result_sharing_mode]}</div>
+                                    </div>
+                                    <div>
+                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Invitation Path</div>
+                                        <div style={{ fontSize: '0.86rem', wordBreak: 'break-all' }}>/invite/{invitation.invitation_key}</div>
                                     </div>
                                 </div>
 
-                                <div style={{ alignItems: 'end', display: 'grid', gap: '0.75rem', gridTemplateColumns: 'minmax(180px, 240px) auto auto' }}>
+                                <div style={{ alignItems: 'end', display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                                     <label style={{ display: 'grid', gap: '0.35rem' }}>
                                         <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>Adjust Max Uses</span>
                                         <input
@@ -445,6 +497,30 @@ const QuizInvitationsPage: React.FC = () => {
                                             value={draftMaxUses[invitation.id] ?? ''}
                                         />
                                     </label>
+                                    <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                        <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>Result Sharing</span>
+                                        <select
+                                            disabled={isBusy}
+                                            onChange={(event) =>
+                                                setDraftSharingModes((current) => ({
+                                                    ...current,
+                                                    [invitation.id]: event.target.value as QuizInvitation['result_sharing_mode'],
+                                                }))
+                                            }
+                                            style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                            value={draftSharingModes[invitation.id] ?? invitation.result_sharing_mode}
+                                        >
+                                            {sharingModeOptions.map((mode) => (
+                                                <option key={mode} value={mode}>
+                                                    {sharingModeLabels[mode]}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        <div style={{ color: '#6b5734', fontSize: '0.82rem' }}>{sharingModeDescriptions[draftSharingModes[invitation.id] ?? invitation.result_sharing_mode]}</div>
+                                    </label>
+                                </div>
+
+                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
                                     <button
                                         disabled={isBusy}
                                         onClick={() => {
@@ -455,28 +531,59 @@ const QuizInvitationsPage: React.FC = () => {
                                     >
                                         {isBusy ? 'Saving…' : 'Save Max Uses'}
                                     </button>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                                        <button
-                                            disabled={isBusy}
-                                            onClick={() => {
-                                                void handleCopyLink(invitation);
-                                            }}
-                                            style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.1rem' }}
-                                            type="button"
-                                        >
-                                            Copy Link
-                                        </button>
-                                        <button
-                                            disabled={isBusy || invitation.revoked_at !== null}
-                                            onClick={() => {
-                                                void handleDeactivate(invitation.id);
-                                            }}
-                                            style={{ background: invitation.revoked_at ? '#d9d0be' : '#efe2d2', border: '1px solid #c5a98d', borderRadius: 999, color: '#5d3b21', cursor: invitation.revoked_at ? 'default' : 'pointer', padding: '0.75rem 1.1rem' }}
-                                            type="button"
-                                        >
-                                            {invitation.revoked_at ? 'Deactivated' : 'Deactivate'}
-                                        </button>
-                                    </div>
+                                    <button
+                                        disabled={isBusy}
+                                        onClick={() => {
+                                            void handleCopyLink(invitation);
+                                        }}
+                                        style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.1rem' }}
+                                        type="button"
+                                    >
+                                        Copy Invitation Link
+                                    </button>
+                                    <button
+                                        disabled={isBusy || invitation.revoked_at !== null}
+                                        onClick={() => {
+                                            void handleDeactivate(invitation.id);
+                                        }}
+                                        style={{ background: invitation.revoked_at ? '#d9d0be' : '#efe2d2', border: '1px solid #c5a98d', borderRadius: 999, color: '#5d3b21', cursor: invitation.revoked_at ? 'default' : 'pointer', padding: '0.75rem 1.1rem' }}
+                                        type="button"
+                                    >
+                                        {invitation.revoked_at ? 'Deactivated' : 'Deactivate'}
+                                    </button>
+                                </div>
+
+                                <div style={{ display: 'grid', gap: '0.5rem' }}>
+                                    <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Auto-created Result Links</div>
+                                    {invitation.shared_view_keys.length === 0 ? (
+                                        <div style={{ color: '#6b5734' }}>No shared result links have been created yet.</div>
+                                    ) : (
+                                        <div style={{ display: 'grid', gap: '0.6rem' }}>
+                                            {invitation.shared_view_keys.map((viewKey, index) => (
+                                                <a
+                                                    key={viewKey.id}
+                                                    href={buildViewUrl(viewKey.view_key, window.location.origin)}
+                                                    rel="noreferrer"
+                                                    style={{
+                                                        alignItems: 'center',
+                                                        background: '#f4ead3',
+                                                        border: '1px solid #d2c19f',
+                                                        borderRadius: 12,
+                                                        color: '#4b3217',
+                                                        display: 'flex',
+                                                        fontWeight: 700,
+                                                        justifyContent: 'space-between',
+                                                        padding: '0.7rem 0.9rem',
+                                                        textDecoration: 'none',
+                                                    }}
+                                                    target="_blank"
+                                                >
+                                                    <span>Open shared result #{index + 1}</span>
+                                                    <span style={{ color: '#6b5734', fontSize: '0.82rem', fontWeight: 500 }}>created {formatDate(viewKey.created_at)}</span>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    )}
                                 </div>
                             </article>
                         );

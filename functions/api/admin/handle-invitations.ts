@@ -18,6 +18,7 @@ const invitationSelect = [
     'use_count',
     'expires_at',
     'revoked_at',
+    'result_sharing_mode',
     'created_at',
     'updated_at',
 ].join(', ');
@@ -40,8 +41,45 @@ const listInvitationsForQuiz = async (env: Partial<AppEnv>, adminKey: string) =>
         throw error;
     }
 
+    const invitations = data ?? [];
+    const invitationIds = invitations.map((invitation) => invitation.id);
+
+    const sharedViewKeysByInvitationId = new Map<string, typeof invitations>();
+
+    if (invitationIds.length > 0) {
+        const { data: viewKeyRows, error: viewKeyError } = await supabase
+            .from('quiz_response_view_keys')
+            .select('*')
+            .in('invitation_id', invitationIds)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+        if (viewKeyError) {
+            throw viewKeyError;
+        }
+
+        for (const invitation of invitations) {
+            sharedViewKeysByInvitationId.set(invitation.id, []);
+        }
+
+        for (const viewKeyRow of viewKeyRows ?? []) {
+            if (!viewKeyRow.invitation_id) {
+                continue;
+            }
+
+            const current = sharedViewKeysByInvitationId.get(viewKeyRow.invitation_id) ?? [];
+            current.push(viewKeyRow);
+            sharedViewKeysByInvitationId.set(viewKeyRow.invitation_id, current);
+        }
+    }
+
     return {
-        invitations: quizInvitationSchema.array().parse(data ?? []),
+        invitations: quizInvitationSchema.array().parse(
+            invitations.map((invitation) => ({
+                ...invitation,
+                shared_view_keys: sharedViewKeysByInvitationId.get(invitation.id) ?? [],
+            }))
+        ),
         quiz,
         supabase,
     };
@@ -98,6 +136,7 @@ export const handleAdminInvitationsPost = async (
                 label: payload.label,
                 max_uses: payload.max_uses,
                 quiz_id: quiz.id,
+                   result_sharing_mode: payload.result_sharing_mode,
             })
             .select(invitationSelect)
             .single();
@@ -139,6 +178,7 @@ export const handleAdminInvitationPatch = async (
             .from('quiz_invitations')
             .update({
                 max_uses: payload.max_uses,
+                   result_sharing_mode: payload.result_sharing_mode,
             })
             .eq('id', invitationId)
             .eq('quiz_id', quiz.id)

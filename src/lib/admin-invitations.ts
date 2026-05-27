@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+import { responseViewKeySchema } from './view-keys';
+
+export const resultSharingModeSchema = z.enum(['off', 'opt_in', 'opt_out', 'mandatory']);
+export type ResultSharingMode = z.infer<typeof resultSharingModeSchema>;
+
 export const quizInvitationSchema = z.object({
     id: z.string().uuid(),
     invitation_key: z.string().min(1),
@@ -10,6 +15,8 @@ export const quizInvitationSchema = z.object({
     use_count: z.number().int().nonnegative(),
     expires_at: z.string().nullable(),
     revoked_at: z.string().nullable(),
+    result_sharing_mode: resultSharingModeSchema,
+    shared_view_keys: z.array(responseViewKeySchema).default([]),
     created_at: z.string(),
     updated_at: z.string(),
 });
@@ -22,10 +29,12 @@ export const createQuizInvitationRequestSchema = z.strictObject({
     description: z.string().optional().default(''),
     label: z.string().optional().default(''),
     max_uses: z.number().int().positive().nullable().optional().default(null),
+    result_sharing_mode: resultSharingModeSchema.optional().default('off'),
 });
 
 export const updateQuizInvitationRequestSchema = z.strictObject({
-    max_uses: z.number().int().positive().nullable(),
+    max_uses: z.number().int().positive().nullable().optional(),
+    result_sharing_mode: resultSharingModeSchema.optional(),
 });
 
 export type QuizInvitation = z.infer<typeof quizInvitationSchema>;

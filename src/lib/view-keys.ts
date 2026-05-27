@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const responseViewKeySchema = z.object({
     id: z.string().uuid(),
     response_id: z.string().uuid(),
+    invitation_id: z.string().uuid().nullable(),
     view_key: z.string().min(1),
     label: z.string(),
     notes: z.string(),
