@@ -17,6 +17,11 @@ import {
   handleRespondentInvitationGet,
   handleRespondentInvitationPickupPost,
   handleRespondentSessionGet,
+  handleRespondentViewKeyDeactivatePost,
+  handleRespondentViewKeyPost,
+  handleRespondentViewKeyPatch,
+  handleRespondentViewKeysGet,
+  handleViewKeyGet,
 } from './functions/api/respondent/handle-respondent';
 
 const readDevVars = () => {
@@ -63,6 +68,10 @@ const respondentInvitationPattern = /^\/api\/respondent\/invite\/([^/]+)\/?$/;
 const respondentInvitationPickupPattern = /^\/api\/respondent\/invite\/([^/]+)\/pickup\/?$/;
 const respondentResponsePattern = /^\/api\/respondent\/response\/([^/]+)\/?$/;
 const respondentAnswerPattern = /^\/api\/respondent\/response\/([^/]+)\/answer\/?$/;
+const respondentViewKeysPattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/?$/;
+const respondentViewKeyDetailPattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/([^/]+)\/?$/;
+const respondentViewKeyDeactivatePattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/([^/]+)\/deactivate\/?$/;
+const respondentViewKeyPattern = /^\/api\/view\/([^/]+)\/?$/;
 
 const readRequestBody = async (req: import('node:http').IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
@@ -108,6 +117,10 @@ export default defineConfig({
           const respondentInvitationPickupMatch = url?.pathname.match(respondentInvitationPickupPattern);
           const respondentInvitationMatch = url?.pathname.match(respondentInvitationPattern);
           const respondentAnswerMatch = url?.pathname.match(respondentAnswerPattern);
+          const respondentViewKeysMatch = url?.pathname.match(respondentViewKeysPattern);
+          const respondentViewKeyDetailMatch = url?.pathname.match(respondentViewKeyDetailPattern);
+          const respondentViewKeyDeactivateMatch = url?.pathname.match(respondentViewKeyDeactivatePattern);
+          const respondentViewKeyMatch = url?.pathname.match(respondentViewKeyPattern);
           const respondentResponseMatch = url?.pathname.match(respondentResponsePattern);
 
           if (!url) {
@@ -136,6 +149,45 @@ export default defineConfig({
             const responseKey = decodeURIComponent(respondentAnswerMatch[1]);
             const request = await buildNodeRequest(req, url, 'POST');
             const response = await handleRespondentAnswerPost(env, responseKey, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentViewKeysMatch && req.method === 'POST') {
+            const responseKey = decodeURIComponent(respondentViewKeysMatch[1]);
+            const request = await buildNodeRequest(req, url, 'POST');
+            const response = await handleRespondentViewKeyPost(env, responseKey, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentViewKeysMatch && req.method === 'GET') {
+            const responseKey = decodeURIComponent(respondentViewKeysMatch[1]);
+            const response = await handleRespondentViewKeysGet(env, responseKey);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentViewKeyDetailMatch && req.method === 'PATCH') {
+            const responseKey = decodeURIComponent(respondentViewKeyDetailMatch[1]);
+            const viewKey = decodeURIComponent(respondentViewKeyDetailMatch[2]);
+            const request = await buildNodeRequest(req, url, 'PATCH');
+            const response = await handleRespondentViewKeyPatch(env, responseKey, viewKey, request);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentViewKeyDeactivateMatch && req.method === 'POST') {
+            const responseKey = decodeURIComponent(respondentViewKeyDeactivateMatch[1]);
+            const viewKey = decodeURIComponent(respondentViewKeyDeactivateMatch[2]);
+            const response = await handleRespondentViewKeyDeactivatePost(env, responseKey, viewKey);
+            await writeNodeResponse(res, response);
+            return;
+          }
+
+          if (respondentViewKeyMatch && req.method === 'GET') {
+            const viewKey = decodeURIComponent(respondentViewKeyMatch[1]);
+            const response = await handleViewKeyGet(env, viewKey);
             await writeNodeResponse(res, response);
             return;
           }

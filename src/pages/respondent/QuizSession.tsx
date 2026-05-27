@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { QuizIntroScreen, QuizQuestionScreen, QuizResultsScreen } from '../../components/quiz-preview';
 import { RespondentAnswersPanel } from '../../components/respondent-answers-panel';
 import { RespondentShell } from '../../components/respondent-shell';
+import { RespondentViewKeyModal } from '../../components/respondent-view-key-modal';
 import { useRespondentSession } from '../../hooks/useRespondentSession';
 import { buildRespondentResultsPrompt } from '../../lib/respondent-results-prompt';
 import {
@@ -21,6 +22,7 @@ const QuizSessionPage: React.FC = () => {
 
     const [copyMessage, setCopyMessage] = React.useState<string | null>(null);
     const [hasStarted, setHasStarted] = React.useState(false);
+    const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
     const [storedSessions, setStoredSessions] = React.useState(listStoredRespondentSessions());
 
     React.useEffect(() => {
@@ -111,18 +113,22 @@ const QuizSessionPage: React.FC = () => {
             quizTitle={session?.quiz.title ?? 'Loading quiz...'}
             sessions={storedSessions.length > 0 ? storedSessions : [{ last_interacted_at: new Date().toISOString(), quiz_title: session?.quiz.title ?? 'Current Quiz', response_key: responseKey }]}
         >
-            <div style={{ margin: '0 auto', maxWidth: 980 }}>
+            {/* Sticky messaging area at top */}
+            <div style={{ position: 'sticky', top: 0, zIndex: 100, marginBottom: '1rem' }}>
                 {error ? (
-                    <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', borderRadius: 16, color: '#6f2412', marginBottom: '1rem', padding: '0.9rem 1rem', whiteSpace: 'pre-wrap' }}>
+                    <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', borderRadius: 16, color: '#6f2412', padding: '0.9rem 1rem', whiteSpace: 'pre-wrap' }}>
                         {error}
                     </div>
                 ) : null}
 
                 {copyMessage ? (
-                    <div style={{ background: '#edf7ed', border: '1px solid #5a8f5a', borderRadius: 16, color: '#1f4f1f', marginBottom: '1rem', padding: '0.9rem 1rem' }}>
+                    <div style={{ background: '#edf7ed', border: '1px solid #5a8f5a', borderRadius: 16, color: '#1f4f1f', padding: '0.9rem 1rem', marginTop: error ? '0.5rem' : 0 }}>
                         {copyMessage}
                     </div>
                 ) : null}
+            </div>
+
+            <div style={{ margin: '0 auto', maxWidth: 980 }}>
 
                 {isLoading || !definition || !session ? <div>Loading your quiz...</div> : null}
 
@@ -172,7 +178,23 @@ const QuizSessionPage: React.FC = () => {
                             traitStats={scoreSummary.traitStats}
                             traitPolarity={definition.display_config.trait_polarity}
                         />
-                        <div style={{ marginTop: '1rem' }}>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                            <button
+                                onClick={() => {
+                                    setIsShareModalOpen(true);
+                                }}
+                                style={{
+                                    background: '#6a5032',
+                                    border: 'none',
+                                    borderRadius: 999,
+                                    color: '#f6f0df',
+                                    cursor: 'pointer',
+                                    padding: '0.85rem 1.4rem',
+                                }}
+                                type="button"
+                            >
+                                Share Results
+                            </button>
                             <button
                                 onClick={() => {
                                     void handleCopyAiPrompt();
@@ -189,6 +211,14 @@ const QuizSessionPage: React.FC = () => {
 
                 {isSubmittingAnswer ? <div style={{ color: '#6b5734', marginTop: '1rem' }}>Saving your answer...</div> : null}
             </div>
+
+            {session ? (
+                <RespondentViewKeyModal
+                    isOpen={isShareModalOpen}
+                    onClose={() => setIsShareModalOpen(false)}
+                    responseKey={session.response.response_key}
+                />
+            ) : null}
         </RespondentShell>
     );
 };

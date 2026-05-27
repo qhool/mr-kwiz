@@ -8,6 +8,15 @@ import {
 import { generateCapabilityToken, sha256Hex } from '../../../src/lib/admin-token';
 import { getQuizInvitationStatus, quizInvitationSchema } from '../../../src/lib/admin-invitations';
 import { quizDefinitionSchema } from '../../../src/lib/quiz-definition';
+import {
+    buildViewUrl,
+    createResponseViewKeyRequestSchema,
+    getViewKeyStatus,
+    listResponseViewKeysResponseSchema,
+    responseViewKeySchema,
+    updateResponseViewKeyRequestSchema,
+    type ResponseViewKey,
+} from '../../../src/lib/view-keys';
 import type { Database } from '../../../src/types/database.generated';
 
 import { type AppEnv } from '../../utils/env';
@@ -19,6 +28,7 @@ type InvitationRow = Database['public']['Tables']['quiz_invitations']['Row'];
 type SnapshotRow = Database['public']['Tables']['quiz_definition_snapshots']['Row'];
 type ResponseRow = Database['public']['Tables']['quiz_responses']['Row'];
 type AnswerRow = Database['public']['Tables']['quiz_response_answers']['Row'];
+type ViewKeyRow = Database['public']['Tables']['quiz_response_view_keys']['Row'];
 
 const buildResumeUrl = (responseKey: string, origin: string) => {
     return `${origin.replace(/\/$/, '')}/quiz/${encodeURIComponent(responseKey)}`;
@@ -402,6 +412,265 @@ export const handleRespondentAnswerPost = async (
     } catch (error) {
         return json(
             { error: error instanceof Error ? error.message : 'Failed to submit answer.' },
+            { status: 500 }
+        );
+    }
+};
+
+export const handleRespondentViewKeyPost = async (
+    env: Partial<AppEnv>,
+    responseKey: string | undefined,
+    request: Request
+): Promise<Response> => {
+    if (!responseKey) {
+        return json({ error: 'Missing response key.' }, { status: 400 });
+    }
+
+    try {
+        const { response, supabase } = await getResponseSessionByKey(env, responseKey);
+        if (!response || !response.quizzes || !response.quiz_definition_snapshots) {
+            return json({ error: 'Quiz response not found.' }, { status: 404 });
+        }
+
+        if (response.state !== 'submitted') {
+            return json({ error: 'Quiz response must be submitted before creating a view key.' }, { status: 400 });
+        }
+
+        const payload = createResponseViewKeyRequestSchema.parse(await request.json());
+        const viewKey = generateCapabilityToken();
+        const { data, error } = await supabase
+            .from('quiz_response_view_keys')
+            .insert({
+                expires_at: payload.expires_at,
+                response_id: response.id,
+                view_key: viewKey,
+                label: payload.label,
+                notes: payload.notes,
+            })
+            .select('*')
+            .single();
+
+        if (error) {
+            throw error;
+        }
+
+        const parsed = responseViewKeySchema.parse(data);
+        return json(
+            {
+                view_key_record: parsed,
+                url: buildViewUrl(viewKey, new URL(request.url).origin),
+                view_key: parsed.view_key,
+            },
+            { status: 201 }
+        );
+    } catch (error) {
+        return json(
+            { error: error instanceof Error ? error.message : 'Failed to create view key.' },
+            { status: 500 }
+        );
+    }
+};
+
+export const handleRespondentViewKeysGet = async (
+    env: Partial<AppEnv>,
+    responseKey: string | undefined
+): Promise<Response> => {
+    if (!responseKey) {
+        return json({ error: 'Missing response key.' }, { status: 400 });
+    }
+
+    try {
+        const { response, supabase } = await getResponseSessionByKey(env, responseKey);
+        if (!response || !response.quizzes || !response.quiz_definition_snapshots) {
+            return json({ error: 'Quiz response not found.' }, { status: 404 });
+        }
+
+        const { data, error } = await supabase
+            .from('quiz_response_view_keys')
+            .select('*')
+            .eq('response_id', response.id)
+            .is('deleted_at', null)
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            throw error;
+        }
+
+        return json(listResponseViewKeysResponseSchema.parse({ view_keys: data ?? [] }));
+    } catch (error) {
+        return json(
+            { error: error instanceof Error ? error.message : 'Failed to load view keys.' },
+            { status: 500 }
+        );
+    }
+};
+
+export const handleRespondentViewKeyPatch = async (
+    env: Partial<AppEnv>,
+    responseKey: string | undefined,
+    viewKey: string | undefined,
+    request: Request
+): Promise<Response> => {
+    if (!responseKey || !viewKey) {
+        return json({ error: 'Missing response key or view key.' }, { status: 400 });
+    }
+
+    try {
+        const { response, supabase } = await getResponseSessionByKey(env, responseKey);
+        if (!response || !response.quizzes || !response.quiz_definition_snapshots) {
+            return json({ error: 'Quiz response not found.' }, { status: 404 });
+        }
+
+        const payload = updateResponseViewKeyRequestSchema.parse(await request.json());
+        const { data, error } = await supabase
+            .from('quiz_response_view_keys')
+            .update({
+                expires_at: payload.expires_at,
+                label: payload.label,
+                notes: payload.notes,
+            })
+            .eq('response_id', response.id)
+            .eq('view_key', viewKey)
+            .is('deleted_at', null)
+            .select('*')
+            .maybeSingle();
+
+        if (error) {
+            throw error;
+        }
+
+        if (!data) {
+            return json({ error: 'View key not found.' }, { status: 404 });
+        }
+
+        return json({ view_key_record: responseViewKeySchema.parse(data) });
+    } catch (error) {
+        return json(
+            { error: error instanceof Error ? error.message : 'Failed to update view key.' },
+            { status: 500 }
+        );
+    }
+};
+
+export const handleRespondentViewKeyDeactivatePost = async (
+    env: Partial<AppEnv>,
+    responseKey: string | undefined,
+    viewKey: string | undefined
+): Promise<Response> => {
+    if (!responseKey || !viewKey) {
+        return json({ error: 'Missing response key or view key.' }, { status: 400 });
+    }
+
+    try {
+        const { response, supabase } = await getResponseSessionByKey(env, responseKey);
+        if (!response || !response.quizzes || !response.quiz_definition_snapshots) {
+            return json({ error: 'Quiz response not found.' }, { status: 404 });
+        }
+
+        const { data, error } = await supabase
+            .from('quiz_response_view_keys')
+            .update({
+                revoked_at: new Date().toISOString(),
+            })
+            .eq('response_id', response.id)
+            .eq('view_key', viewKey)
+            .is('deleted_at', null)
+            .select('*')
+            .maybeSingle();
+
+        if (error) {
+            throw error;
+        }
+
+        if (!data) {
+            return json({ error: 'View key not found.' }, { status: 404 });
+        }
+
+        return json({ view_key_record: responseViewKeySchema.parse(data) });
+    } catch (error) {
+        return json(
+            { error: error instanceof Error ? error.message : 'Failed to deactivate view key.' },
+            { status: 500 }
+        );
+    }
+};
+
+export const handleViewKeyGet = async (
+    env: Partial<AppEnv>,
+    viewKey?: string
+): Promise<Response> => {
+    if (!viewKey) {
+        return json({ error: 'Missing view key.' }, { status: 400 });
+    }
+
+    try {
+        const supabase = createServerSupabaseClient(env as AppEnv);
+        const { data: viewKeyData, error: viewKeyError } = await supabase
+            .from('quiz_response_view_keys')
+            .select('*')
+            .eq('view_key', viewKey)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (viewKeyError) {
+            throw viewKeyError;
+        }
+
+        if (!viewKeyData) {
+            return json({ error: 'View key not found.' }, { status: 404 });
+        }
+
+        const parsed = responseViewKeySchema.parse(viewKeyData);
+        const status = getViewKeyStatus(parsed);
+        if (status !== 'active') {
+            return json({ error: `View key is ${status}.` }, { status: 410 });
+        }
+
+        const viewKeyRow = viewKeyData as ViewKeyRow;
+        const responseResult = await supabase
+            .from('quiz_responses')
+            .select('*, quizzes!quiz_responses_quiz_id_fkey(id, title, description), quiz_definition_snapshots!quiz_responses_snapshot_id_fkey(id, definition_version, definition)')
+            .eq('id', viewKeyRow.response_id)
+            .is('deleted_at', null)
+            .maybeSingle();
+
+        if (responseResult.error) {
+            throw responseResult.error;
+        }
+
+        if (!responseResult.data) {
+            return json({ error: 'Response not found.' }, { status: 404 });
+        }
+
+        const answersResult = await supabase
+            .from('quiz_response_answers')
+            .select('*')
+            .eq('response_id', viewKeyRow.response_id)
+            .is('deleted_at', null)
+            .order('answered_at', { ascending: true });
+
+        if (answersResult.error) {
+            throw answersResult.error;
+        }
+
+        const responseRow = responseResult.data as ResponseRow & {
+            quizzes: Pick<QuizRow, 'description' | 'id' | 'title'> | null;
+            quiz_definition_snapshots: Pick<SnapshotRow, 'definition' | 'definition_version' | 'id'> | null;
+        };
+
+        const allAnswers = (answersResult.data ?? []) as AnswerRow[];
+        const fakeResponseKey = `view-${viewKey}`;
+        const session = serializeRespondentSession(fakeResponseKey, responseRow, allAnswers);
+
+        await supabase
+            .from('quiz_response_view_keys')
+            .update({ last_viewed_at: new Date().toISOString() })
+            .eq('id', viewKeyRow.id);
+
+        return json(session);
+    } catch (error) {
+        return json(
+            { error: error instanceof Error ? error.message : 'Failed to load view key.' },
             { status: 500 }
         );
     }
