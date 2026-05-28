@@ -2,6 +2,7 @@ import React from 'react';
 import { ZodError } from 'zod';
 
 import { quizDefinitionSchema, type QuizDefinition } from '../lib/quiz-definition';
+import { saveStoredAdminSession } from '../lib/respondent-quiz';
 
 export type AdminQuizMetadata = {
     current_definition_version: number;
@@ -53,7 +54,13 @@ export const useAdminQuizDefinition = (adminKey?: string) => {
 
             const parsedDefinition = quizDefinitionSchema.parse(body.definition);
             setDefinition(parsedDefinition);
-            setMetadata(body.quiz as AdminQuizMetadata);
+            const adminMetadata = body.quiz as AdminQuizMetadata;
+            setMetadata(adminMetadata);
+            
+            // Save admin session to local storage for navigation
+            if (adminKey && adminMetadata.title) {
+                saveStoredAdminSession(adminKey, adminMetadata.title);
+            }
         } catch (loadError) {
             setError(formatError(loadError));
         } finally {

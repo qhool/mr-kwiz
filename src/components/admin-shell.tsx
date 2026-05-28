@@ -2,6 +2,9 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 
 import type { AdminQuizMetadata } from '../hooks/useAdminQuizDefinition';
+import type { StoredAdminSession, StoredRespondentSession } from '../lib/respondent-quiz';
+import { listStoredAdminSessions, listStoredRespondentSessions } from '../lib/respondent-quiz';
+import { SessionNavigationModal } from './session-navigation';
 
 type AdminPage = 'edit' | 'preview' | 'invitations';
 
@@ -29,6 +32,15 @@ const navLinkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties 
 });
 
 export const AdminShell: React.FC<AdminShellProps> = ({ adminKey, children, currentPage, metadata }) => {
+    const [isNavigationOpen, setIsNavigationOpen] = React.useState(false);
+    const [adminSessions, setAdminSessions] = React.useState<StoredAdminSession[]>([]);
+    const [respondentSessions, setRespondentSessions] = React.useState<StoredRespondentSession[]>([]);
+
+    React.useEffect(() => {
+        setAdminSessions(listStoredAdminSessions());
+        setRespondentSessions(listStoredRespondentSessions());
+    }, []);
+
     return (
         <div style={{ minHeight: '100vh' }}>
             <header
@@ -55,6 +67,22 @@ export const AdminShell: React.FC<AdminShellProps> = ({ adminKey, children, curr
                     }}
                 >
                     <div style={{ alignItems: 'center', display: 'flex', gap: '1rem', minWidth: 0 }}>
+                        <button
+                            onClick={() => setIsNavigationOpen(true)}
+                            style={{
+                                background: 'rgba(255, 250, 240, 0.12)',
+                                border: '1px solid rgba(246, 240, 223, 0.22)',
+                                borderRadius: 999,
+                                color: '#f6f0df',
+                                cursor: 'pointer',
+                                fontSize: '0.9rem',
+                                padding: '0.4rem 0.8rem',
+                                whiteSpace: 'nowrap',
+                            }}
+                            type="button"
+                        >
+                            ≡ Sessions
+                        </button>
                         <div style={{ color: '#f6f0df', fontFamily: 'Georgia, Times New Roman, serif', fontSize: '1.4rem', fontWeight: 700, whiteSpace: 'nowrap' }}>
                             Mr. Kwiz
                         </div>
@@ -87,6 +115,15 @@ export const AdminShell: React.FC<AdminShellProps> = ({ adminKey, children, curr
             </header>
 
             <main style={{ margin: '0 auto', maxWidth: 1400, padding: '7rem 1.5rem 2rem' }}>{children}</main>
+
+            {isNavigationOpen && (
+                <SessionNavigationModal
+                    adminSessions={adminSessions}
+                    currentAdminToken={adminKey}
+                    onClose={() => setIsNavigationOpen(false)}
+                    respondentSessions={respondentSessions}
+                />
+            )}
         </div>
     );
 };

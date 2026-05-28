@@ -107,6 +107,8 @@ export const QuizQuestionScreen: React.FC<{
     progressLabel?: string;
     progressMessage?: string;
     progressPercent?: number;
+    progressPhraseOnly?: boolean;
+    progressTooltip?: string;
     question: Question | null;
     questionIndex: number;
     questionCount: number;
@@ -117,6 +119,8 @@ export const QuizQuestionScreen: React.FC<{
     progressLabel,
     progressMessage,
     progressPercent,
+    progressPhraseOnly,
+    progressTooltip,
     question,
     questionCount,
     questionIndex,
@@ -156,13 +160,78 @@ export const QuizQuestionScreen: React.FC<{
                         }}
                     />
                 </div>
-                <div style={{ color: '#5a4a2f', display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.45rem' }}>
-                    <span>{progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}</span>
-                    <span>{Math.round(Math.max(0, Math.min(100, progressPercent ?? 0)))}%</span>
-                </div>
-                {progressMessage ? (
-                    <div style={{ color: '#6a5032', fontSize: '0.88rem', marginTop: '0.35rem' }}>{progressMessage}</div>
-                ) : null}
+                {progressPhraseOnly ? (
+                    progressMessage ? (
+                        <div
+                            style={{
+                                alignItems: 'center',
+                                color: '#6a5032',
+                                display: 'inline-flex',
+                                fontSize: '0.88rem',
+                                gap: '0.35rem',
+                                marginTop: '0.45rem',
+                            }}
+                        >
+                            <span>{progressMessage}</span>
+                            {progressTooltip ? (
+                                <span
+                                    aria-label={progressTooltip}
+                                    role="img"
+                                    style={{
+                                        background: '#d8cfbb',
+                                        borderRadius: '50%',
+                                        color: '#4e3f29',
+                                        cursor: 'help',
+                                        display: 'inline-flex',
+                                        fontSize: '0.7rem',
+                                        fontWeight: 700,
+                                        height: 16,
+                                        justifyContent: 'center',
+                                        lineHeight: 1,
+                                        width: 16,
+                                    }}
+                                    title={progressTooltip}
+                                >
+                                    i
+                                </span>
+                            ) : null}
+                        </div>
+                    ) : null
+                ) : (
+                    <>
+                        <div style={{ color: '#5a4a2f', display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.45rem' }}>
+                            <span style={{ alignItems: 'center', display: 'inline-flex', gap: '0.35rem' }}>
+                                <span>{progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}</span>
+                                {progressTooltip ? (
+                                    <span
+                                        aria-label={progressTooltip}
+                                        role="img"
+                                        style={{
+                                            background: '#d8cfbb',
+                                            borderRadius: '50%',
+                                            color: '#4e3f29',
+                                            cursor: 'help',
+                                            display: 'inline-flex',
+                                            fontSize: '0.7rem',
+                                            fontWeight: 700,
+                                            height: 16,
+                                            justifyContent: 'center',
+                                            lineHeight: 1,
+                                            width: 16,
+                                        }}
+                                        title={progressTooltip}
+                                    >
+                                        i
+                                    </span>
+                                ) : null}
+                            </span>
+                            <span>{Math.round(Math.max(0, Math.min(100, progressPercent ?? 0)))}%</span>
+                        </div>
+                        {progressMessage ? (
+                            <div style={{ color: '#6a5032', fontSize: '0.88rem', marginTop: '0.35rem' }}>{progressMessage}</div>
+                        ) : null}
+                    </>
+                )}
             </div>
             {question.help_text ? <div style={{ marginBottom: '1.25rem' }}>{renderMarkdown(question.help_text)}</div> : null}
             <div style={{ display: 'grid', gap: '0.9rem' }}>

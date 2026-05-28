@@ -4,12 +4,20 @@ import { resultSharingModeSchema } from './admin-invitations';
 import type { Archetype, AdaptiveSelectionConfig, Question, QuizDefinition, Trait } from './quiz-definition';
 
 const RESPONDENT_STORAGE_KEY = 'mrkwiz.respondentSessions.v1';
+const ADMIN_STORAGE_KEY = 'mrkwiz.adminTokens.v1';
 const RESPONDENT_SKIP_INTRO_PREFIX = 'mrkwiz.skipIntroForResponse.';
 
 export const storedRespondentSessionSchema = z.object({
     last_interacted_at: z.string(),
     quiz_title: z.string().min(1),
     response_key: z.string().min(1),
+    submitted_at: z.string().nullable().default(null),
+});
+
+export const storedAdminSessionSchema = z.object({
+    admin_token: z.string().min(1),
+    quiz_title: z.string().min(1),
+    saved_at: z.string(),
 });
 
 export const answeredQuestionSchema = z.object({
@@ -84,6 +92,7 @@ export const respondentAnswerRequestSchema = z.object({
 export const respondentAnswerResponseSchema = respondentSessionSchema;
 
 export type StoredRespondentSession = z.infer<typeof storedRespondentSessionSchema>;
+export type StoredAdminSession = z.infer<typeof storedAdminSessionSchema>;
 export type AnsweredQuestion = z.infer<typeof answeredQuestionSchema>;
 export type RespondentInvitationPickup = z.infer<typeof respondentInvitationPickupSchema>;
 export type RespondentPickupCreateRequest = z.infer<typeof respondentPickupCreateRequestSchema>;
@@ -277,7 +286,7 @@ export const consumeRespondentIntroSkipped = (responseKey: string): boolean => {
 };
 
 export const saveStoredRespondentSession = (
-    session: Pick<StoredRespondentSession, 'quiz_title' | 'response_key'>,
+    session: Pick<StoredRespondentSession, 'quiz_title' | 'response_key'> & { submitted_at?: string | null },
     interactedAt = new Date().toISOString()
 ) => {
     const existing = listStoredRespondentSessions().filter(
@@ -289,12 +298,13 @@ export const saveStoredRespondentSession = (
             last_interacted_at: interactedAt,
             quiz_title: session.quiz_title,
             response_key: session.response_key,
+            submitted_at: session.submitted_at ?? null,
         },
         ...existing,
     ]);
 };
 
-export const touchStoredRespondentSession = (responseKey: string, quizTitle?: string) => {
+export const touchStoredRespondentSession = (responseKey: string, quizTitle?: string, submittedAt: string | null = null) => {
     const existing = listStoredRespondentSessions();
     const current = existing.find((entry) => entry.response_key === responseKey);
 
@@ -303,6 +313,7 @@ export const touchStoredRespondentSession = (responseKey: string, quizTitle?: st
             last_interacted_at: new Date().toISOString(),
             quiz_title: quizTitle ?? current?.quiz_title ?? 'Untitled Quiz',
             response_key: responseKey,
+            submitted_at: submittedAt ?? current?.submitted_at ?? null,
         },
         ...existing.filter((entry) => entry.response_key !== responseKey),
     ]);
@@ -310,6 +321,54 @@ export const touchStoredRespondentSession = (responseKey: string, quizTitle?: st
 
 export const getMostRecentStoredRespondentSession = (): StoredRespondentSession | null => {
     return listStoredRespondentSessions()[0] ?? null;
+};
+
+// Admin token storage functions
+const parseStoredAdminSessions = (raw: string | null): StoredAdminSession[] => {
+    if (!raw) {
+        return [];
+    }
+
+    try {
+        return z.array(storedAdminSessionSchema).parse(JSON.parse(raw));
+    } catch {
+        return [];
+    }
+};
+
+const writeStoredAdminSessions = (sessions: StoredAdminSession[]) => {
+    if (!hasWindow()) {
+        return;
+    }
+
+    window.localStorage.setItem(ADMIN_STORAGE_KEY, JSON.stringify(sessions));
+};
+
+export const listStoredAdminSessions = (): StoredAdminSession[] => {
+    if (!hasWindow()) {
+        return [];
+    }
+
+    return parseStoredAdminSessions(window.localStorage.getItem(ADMIN_STORAGE_KEY)).sort(
+        (left, right) => new Date(right.saved_at).getTime() - new Date(left.saved_at).getTime()
+    );
+};
+
+export const saveStoredAdminSession = (adminToken: string, quizTitle: string, savedAt = new Date().toISOString()) => {
+    const existing = listStoredAdminSessions().filter((entry) => entry.admin_token !== adminToken);
+
+    writeStoredAdminSessions([
+        {
+            admin_token: adminToken,
+            quiz_title: quizTitle,
+            saved_at: savedAt,
+        },
+        ...existing,
+    ]);
+};
+
+export const getMostRecentStoredAdminSession = (): StoredAdminSession | null => {
+    return listStoredAdminSessions()[0] ?? null;
 };
 
 export const getOrderedActiveQuestions = (definition: QuizDefinition): Question[] => {

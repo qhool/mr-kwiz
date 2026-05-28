@@ -77,7 +77,12 @@ const QuizSessionPage: React.FC = () => {
 
     React.useEffect(() => {
         if (session?.response.response_key && session.quiz.title) {
-            touchStoredRespondentSession(session.response.response_key, session.quiz.title);
+            const isSubmitted = session.response.state === 'submitted' && session.response.submitted_at;
+            touchStoredRespondentSession(
+                session.response.response_key,
+                session.quiz.title,
+                isSubmitted ? session.response.submitted_at : null
+            );
             setStoredSessions(listStoredRespondentSessions());
         }
     }, [session]);
@@ -137,16 +142,24 @@ const QuizSessionPage: React.FC = () => {
         }
 
         if (ordering === 'adaptive') {
-            const cfg = definition.scoring_config.adaptive_selection;
-            const minQuestions = cfg?.min_questions ?? 0;
-            const maxQuestions = cfg?.max_questions ?? minQuestions;
-            return `Adaptive progress ${Math.round(progressPercent)}% (${answeredCount} answered, min ${minQuestions}, max ${maxQuestions})`;
+            return 'Adaptive progress';
         }
 
         const total = orderedQuestions.length;
         const n = total > 0 ? Math.min(answeredCount + 1, total) : 0;
         return `Question ${n} of ${total}`;
     }, [answeredCount, definition, ordering, orderedQuestions.length, progressPercent, session]);
+
+    const progressTooltip = React.useMemo(() => {
+        if (!definition || !session || ordering !== 'adaptive') {
+            return undefined;
+        }
+
+        const cfg = definition.scoring_config.adaptive_selection;
+        const minQuestions = cfg?.min_questions ?? 0;
+        const maxQuestions = cfg?.max_questions ?? minQuestions;
+        return `Adaptive progress ${Math.round(progressPercent)}% (${answeredCount} answered, min ${minQuestions}, max ${maxQuestions})`;
+    }, [answeredCount, definition, ordering, progressPercent, session]);
 
     const currentAdaptivePhase = React.useMemo(() => {
         if (ordering !== 'adaptive') {
@@ -320,7 +333,7 @@ const QuizSessionPage: React.FC = () => {
             currentResponseKey={responseKey}
             onSelectSession={handleSelectSession}
             quizTitle={session?.quiz.title ?? 'Loading quiz...'}
-            sessions={storedSessions.length > 0 ? storedSessions : [{ last_interacted_at: new Date().toISOString(), quiz_title: session?.quiz.title ?? 'Current Quiz', response_key: responseKey }]}
+            sessions={storedSessions.length > 0 ? storedSessions : [{ last_interacted_at: new Date().toISOString(), quiz_title: session?.quiz.title ?? 'Current Quiz', response_key: responseKey, submitted_at: null }]}
         >
             {/* Sticky messaging area at top */}
             <div style={{ position: 'sticky', top: 0, zIndex: 100, marginBottom: '1rem' }}>
@@ -368,8 +381,10 @@ const QuizSessionPage: React.FC = () => {
                                 void handleAnswer(answerId);
                             }}
                             progressLabel={progressLabel}
+                            progressPhraseOnly={(definition.question_ordering ?? 'ordered') === 'adaptive'}
                             progressMessage={progressMessage}
                             progressPercent={progressPercent}
+                            progressTooltip={progressTooltip}
                             question={currentQuestion}
                             questionCount={orderedQuestions.length}
                             questionIndex={Math.max(0, currentQuestionIndex)}
