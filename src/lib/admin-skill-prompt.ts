@@ -3,7 +3,7 @@ import Mustache from 'mustache';
 import skillTemplate from '../../docs/skill-template.md.mustache?raw';
 import schemaReference from '../../docs/quiz-schema-reference.md?raw';
 
-import type { QuizDefinition } from './quiz-definition';
+import type { AdaptiveSelectionConfig, QuizDefinition } from './quiz-definition';
 
 type AdminPromptMetadata = {
     current_definition_version: number;
@@ -13,13 +13,16 @@ type AdminPromptMetadata = {
 };
 
 type AdminSkillPromptContext = {
+    adaptive_selection_section: string;
     base_definition_version: number;
     determination_summary: string;
+    has_adaptive_selection: boolean;
     has_questions: boolean;
     id_policy: string;
     patch_context: string;
     question_count: number;
     question_index: string;
+    question_ordering: string;
     schema_reference: string;
     target_context: string;
     trait_count: number;
@@ -90,6 +93,44 @@ const summarizePrompt = (prompt: string): string => {
     return `${collapsed.slice(0, 77)}...`;
 };
 
+const renderAdaptiveSelectionSection = (cfg: AdaptiveSelectionConfig, traitCount: number): string => {
+    const lines = ['## Adaptive Selection Configuration', ''];
+
+    lines.push(`- min_questions: ${cfg.min_questions}`);
+    lines.push(`- max_questions: ${cfg.max_questions}`);
+    lines.push(`- candidate_pool_size: ${cfg.candidate_pool_size}`);
+    lines.push(`- candidate_count: ${cfg.candidate_count}`);
+    lines.push(`- need_power: ${cfg.need_power}`);
+    lines.push(`- uncertainty_weight: ${cfg.uncertainty_weight}`);
+    lines.push(`- contradiction_followup_weight: ${cfg.contradiction_followup_weight}`);
+    lines.push(`- axis_purity_min: ${cfg.axis_purity_min}`);
+    lines.push(`- off_axis_penalty: ${cfg.off_axis_penalty}`);
+    lines.push(`- recent_window: ${cfg.recent_window}`);
+    lines.push(`- recent_redundancy_penalty: ${cfg.recent_redundancy_penalty}`);
+    lines.push(`- skipped_penalty: ${cfg.skipped_penalty}`);
+    lines.push(`- batch_diversity_penalty: ${cfg.batch_diversity_penalty}`);
+    lines.push(`- min_goodness_to_ask: ${cfg.min_goodness_to_ask}`);
+    lines.push('');
+
+    if (cfg.target_info.length === traitCount) {
+        lines.push(
+            renderTable(
+                ['position', 'target_info', 'trait_priority', 'contradiction_target'],
+                cfg.target_info.map((val, i) => [
+                    String(i + 1),
+                    String(val),
+                    String(cfg.trait_priority[i] ?? ''),
+                    String(cfg.contradiction_target[i] ?? ''),
+                ])
+            )
+        );
+    } else {
+        lines.push('_Vector lengths do not match trait count — update adaptive_selection after finalizing traits._');
+    }
+
+    return lines.join('\n');
+};
+
 const renderQuestionIndex = (definition: QuizDefinition): string => {
     const lines = ['## Question Index', ''];
 
@@ -117,14 +158,20 @@ const buildPromptContext = (
     definition: QuizDefinition,
     metadata: AdminPromptMetadata
 ): AdminSkillPromptContext => {
+    const adaptiveCfg = definition.scoring_config.adaptive_selection;
     return {
+        adaptive_selection_section: adaptiveCfg
+            ? renderAdaptiveSelectionSection(adaptiveCfg, definition.traits.length)
+            : '',
         base_definition_version: metadata.current_definition_version,
         determination_summary: NOT_PROVIDED,
+        has_adaptive_selection: !!adaptiveCfg,
         has_questions: definition.questions.length > 0,
         id_policy: NOT_PROVIDED,
         patch_context: NOT_PROVIDED,
         question_count: definition.questions.length,
         question_index: renderQuestionIndex(definition),
+        question_ordering: definition.question_ordering ?? 'ordered',
         schema_reference: schemaReference.trim(),
         target_context: '',
         trait_count: definition.traits.length,

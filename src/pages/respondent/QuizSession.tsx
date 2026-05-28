@@ -8,9 +8,18 @@ import { RespondentViewKeyModal } from '../../components/respondent-view-key-mod
 import { useRespondentSession } from '../../hooks/useRespondentSession';
 import { buildRespondentResultsPrompt } from '../../lib/respondent-results-prompt';
 import {
+    consumeRespondentIntroSkipped,
     computeRespondentScores,
     getMostRecentStoredRespondentSession,
     getOrderedActiveQuestions,
+    getNextRandomQuestionId,
+    selectAdaptiveCandidates,
+    isAdaptiveQuizComplete,
+    getAdaptiveSkippedIds,
+    addAdaptiveSkippedId,
+    getAdaptiveBatch,
+    setAdaptiveBatch,
+    clearAdaptiveSessionState,
     listStoredRespondentSessions,
     touchStoredRespondentSession,
 } from '../../lib/respondent-quiz';
@@ -23,7 +32,42 @@ const QuizSessionPage: React.FC = () => {
     const [copyMessage, setCopyMessage] = React.useState<string | null>(null);
     const [hasStarted, setHasStarted] = React.useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
+    const [skipIntro, setSkipIntro] = React.useState(false);
     const [storedSessions, setStoredSessions] = React.useState(listStoredRespondentSessions());
+    // Adaptive/random: client-owned current question id override
+    const [clientQuestionId, setClientQuestionId] = React.useState<string | null>(null);
+
+    React.useEffect(() => {
+        if (!responseKey) {
+            setSkipIntro(false);
+            return;
+        }
+
+        setSkipIntro(consumeRespondentIntroSkipped(responseKey));
+    }, [responseKey]);
+
+    // Initialise adaptive batch and client question id when session/definition first loads
+    React.useEffect(() => {
+        if (!definition || !session || !responseKey) return;
+        if ((definition.question_ordering ?? 'ordered') !== 'adaptive') {
+            setClientQuestionId(null);
+            return;
+        }
+        const cfg = definition.scoring_config.adaptive_selection;
+        if (!cfg) return;
+        const existingBatch = getAdaptiveBatch(responseKey);
+        if (existingBatch.length > 0) {
+            setClientQuestionId(existingBatch[0]?.question_id ?? null);
+            return;
+        }
+        const skipped = getAdaptiveSkippedIds(responseKey);
+        const score = computeRespondentScores(definition, session.answers);
+        const newBatch = selectAdaptiveCandidates(definition, session.answers, skipped, cfg, score);
+        setAdaptiveBatch(responseKey, newBatch);
+        setClientQuestionId(newBatch[0]?.question_id ?? null);
+    // Run only when session identity changes, not on every session mutation
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [definition?.question_ordering, session?.response.response_key]);
 
     React.useEffect(() => {
         if (session?.response.response_key && session.quiz.title) {
@@ -45,13 +89,23 @@ const QuizSessionPage: React.FC = () => {
         () => (definition ? getOrderedActiveQuestions(definition) : []),
         [definition]
     );
-    const currentQuestion = React.useMemo(() => {
-        if (!definition || !session?.response.current_question_id) {
-            return null;
-        }
 
-        return orderedQuestions.find((question) => question.id === session.response.current_question_id) ?? null;
-    }, [definition, orderedQuestions, session]);
+    // Compute an effective next question id via mode-aware selection
+    const effectiveQuestionId = React.useMemo((): string | null => {
+        if (!definition || !session) return session?.response.current_question_id ?? null;
+        const ordering = definition.question_ordering ?? 'ordered';
+        if (ordering === 'ordered') return clientQuestionId ?? session.response.current_question_id;
+        if (ordering === 'random') {
+            return clientQuestionId ?? getNextRandomQuestionId(definition, session.answers, session.response.response_key);
+        }
+        // adaptive: use client batch
+        return clientQuestionId ?? session.response.current_question_id;
+    }, [definition, session, clientQuestionId]);
+
+    const currentQuestion = React.useMemo(() => {
+        if (!definition || !effectiveQuestionId) return null;
+        return orderedQuestions.find((q) => q.id === effectiveQuestionId) ?? null;
+    }, [definition, orderedQuestions, effectiveQuestionId]);
     const currentQuestionIndex = currentQuestion
         ? orderedQuestions.findIndex((question) => question.id === currentQuestion.id)
         : -1;
@@ -63,12 +117,30 @@ const QuizSessionPage: React.FC = () => {
         return computeRespondentScores(definition, session.answers);
     }, [definition, session]);
 
-    const showIntro = Boolean(session && definition && session.answers.length === 0 && !hasStarted && session.response.state === 'started');
+    const showIntro = Boolean(
+        session &&
+            definition &&
+            session.answers.length === 0 &&
+            !hasStarted &&
+            !skipIntro &&
+            session.response.state === 'started'
+    );
     const showResults = Boolean(
         session &&
             definition &&
             !showIntro &&
-            (session.response.state === 'submitted' || session.response.current_question_id === null)
+            (() => {
+                if (session.response.state === 'submitted') return true;
+                const ordering = definition?.question_ordering ?? 'ordered';
+                if (ordering === 'adaptive') {
+                    const cfg = definition?.scoring_config.adaptive_selection;
+                    if (cfg && scoreSummary) {
+                        const batch = responseKey ? getAdaptiveBatch(responseKey) : [];
+                        return isAdaptiveQuizComplete(definition, session.answers, batch);
+                    }
+                }
+                return effectiveQuestionId === null;
+            })()
     );
 
     const handleSelectSession = (nextResponseKey: string) => {
@@ -81,7 +153,58 @@ const QuizSessionPage: React.FC = () => {
         }
 
         setCopyMessage(null);
-        await submitAnswer(currentQuestion.id, answerId);
+        const newSession = await submitAnswer(currentQuestion.id, answerId);
+
+        // After answer, recompute client next question for non-ordered modes
+        if (newSession && definition && responseKey) {
+            const ordering = definition.question_ordering ?? 'ordered';
+            if (ordering === 'random') {
+                setClientQuestionId(getNextRandomQuestionId(definition, newSession.answers, responseKey));
+            } else if (ordering === 'adaptive') {
+                const cfg = definition.scoring_config.adaptive_selection;
+                if (cfg) {
+                    const newScore = computeRespondentScores(definition, newSession.answers);
+                    const skipped = getAdaptiveSkippedIds(responseKey);
+                    const newBatch = selectAdaptiveCandidates(definition, newSession.answers, skipped, cfg, newScore);
+                    setAdaptiveBatch(responseKey, newBatch);
+                    const done = isAdaptiveQuizComplete(definition, newSession.answers, newBatch);
+                    if (done) {
+                        clearAdaptiveSessionState(responseKey);
+                        setClientQuestionId(null);
+                    } else {
+                        setClientQuestionId(newBatch[0]?.question_id ?? null);
+                    }
+                }
+            } else {
+                setClientQuestionId(null);
+            }
+        }
+    };
+
+    const handleSkip = () => {
+        if (!currentQuestion || !definition || !responseKey || !session) {
+            return;
+        }
+        const ordering = definition.question_ordering ?? 'ordered';
+        if (ordering !== 'adaptive') return;
+        const cfg = definition.scoring_config.adaptive_selection;
+        if (!cfg) return;
+
+        addAdaptiveSkippedId(responseKey, currentQuestion.id);
+        const currentBatch = getAdaptiveBatch(responseKey);
+        const nextInBatch = currentBatch.find((c) => c.question_id !== currentQuestion.id);
+        if (nextInBatch) {
+            // Serve next candidate from existing batch
+            setAdaptiveBatch(responseKey, currentBatch.filter((c) => c.question_id !== currentQuestion.id));
+            setClientQuestionId(nextInBatch.question_id);
+        } else {
+            // Batch exhausted — recompute
+            const skipped = getAdaptiveSkippedIds(responseKey);
+            const newScore = computeRespondentScores(definition, session.answers);
+            const newBatch = selectAdaptiveCandidates(definition, session.answers, skipped, cfg, newScore);
+            setAdaptiveBatch(responseKey, newBatch);
+            setClientQuestionId(newBatch[0]?.question_id ?? null);
+        }
     };
 
     const handleCopyAiPrompt = async () => {
@@ -152,15 +275,37 @@ const QuizSessionPage: React.FC = () => {
                 ) : null}
 
                 {!isLoading && definition && session && !showIntro && !showResults ? (
-                    <QuizQuestionScreen
-                        eyebrow="Your Quiz"
-                        onSelectResponse={(answerId) => {
-                            void handleAnswer(answerId);
-                        }}
-                        question={currentQuestion}
-                        questionCount={orderedQuestions.length}
-                        questionIndex={Math.max(0, currentQuestionIndex)}
-                    />
+                    <>
+                        <QuizQuestionScreen
+                            eyebrow="Your Quiz"
+                            onSelectResponse={(answerId) => {
+                                void handleAnswer(answerId);
+                            }}
+                            question={currentQuestion}
+                            questionCount={orderedQuestions.length}
+                            questionIndex={Math.max(0, currentQuestionIndex)}
+                        />
+                        {(definition.question_ordering ?? 'ordered') === 'adaptive' ? (
+                            <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
+                                <button
+                                    disabled={isSubmittingAnswer}
+                                    onClick={handleSkip}
+                                    style={{
+                                        background: 'transparent',
+                                        border: '1px solid #c8bfa9',
+                                        borderRadius: 999,
+                                        color: '#7a6548',
+                                        cursor: 'pointer',
+                                        fontSize: '0.9rem',
+                                        padding: '0.5rem 1rem',
+                                    }}
+                                    type="button"
+                                >
+                                    Skip this question
+                                </button>
+                            </div>
+                        ) : null}
+                    </>
                 ) : null}
 
                 {!isLoading && definition && session && showResults && scoreSummary ? (

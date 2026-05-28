@@ -58,9 +58,50 @@ export const matrixSchema = z
             notes: ['Indexing rule: values[response_index * trait_count + trait_index].'],
         },
     });
+export const questionOrderingSchema = z
+    .enum(['ordered', 'random', 'adaptive'])
+    .meta({
+        description: 'Controls how questions are sequenced during a quiz session. ordered: display_order sequence; random: session-stable shuffle; adaptive: information-driven selection.',
+    });
+
+export type QuestionOrdering = z.infer<typeof questionOrderingSchema>;
+
+export const adaptiveSelectionConfigSchema = z
+    .object({
+        target_info: z.array(z.number().nonnegative()).meta({ description: 'Per-trait target information level. Length must equal trait count.' }),
+        trait_priority: z.array(z.number().nonnegative()).meta({ description: 'Per-trait priority multiplier applied to need. Length must equal trait count.' }),
+        min_questions: z.number().int().positive().default(10).meta({ description: 'Minimum questions answered before early-stop rules apply.' }),
+        max_questions: z.number().int().positive().default(30).meta({ description: 'Hard upper limit on questions presented.' }),
+        candidate_pool_size: z.number().int().positive().default(12).meta({ description: 'Number of top-scored questions to retain before greedy diversity selection.' }),
+        candidate_count: z.number().int().positive().default(3).meta({ description: 'Candidate batch size returned per selection cycle.' }),
+        need_power: z.number().positive().default(1.25).meta({ description: 'Exponent applied to deficit ratio when computing the need vector.' }),
+        uncertainty_weight: z.number().nonnegative().default(0.20).meta({ description: 'Weight applied to the uncertainty term in the need vector.' }),
+        contradiction_followup_weight: z.number().nonnegative().default(0.35).meta({ description: 'Weight applied to contradiction follow-up pressure in the need vector.' }),
+        contradiction_target: z.array(z.number().positive()).meta({ description: 'Per-trait target contradiction level for follow-up scaling. Length must equal trait count.' }),
+        axis_purity_min: z.number().min(0).max(1).default(0.35).meta({ description: 'Minimum cosine similarity between expected-info and need vectors for a question to be a strong candidate.' }),
+        off_axis_penalty: z.number().nonnegative().default(0.25).meta({ description: 'Penalty multiplier for questions that over-load already-saturated traits.' }),
+        recent_window: z.number().int().positive().default(5).meta({ description: 'Number of most-recently answered questions considered for redundancy penalty.' }),
+        recent_redundancy_penalty: z.number().nonnegative().default(0.20).meta({ description: 'Penalty multiplier for cosine similarity to recently answered questions.' }),
+        skipped_penalty: z.number().nonnegative().default(0.75).meta({ description: 'Raw score penalty applied to questions previously skipped in this session.' }),
+        batch_diversity_penalty: z.number().nonnegative().default(0.25).meta({ description: 'Greedy batch diversity penalty multiplier for similarity to already-selected candidates.' }),
+        min_goodness_to_ask: z.number().min(0).max(1).default(0.10).meta({ description: 'Normalized goodness threshold below which a question is considered a weak candidate. Used in post-minimum stopping.' }),
+    })
+    .meta({
+        description: 'Configuration for adaptive question selection. All vectors must align with the quiz trait order.',
+        docs: {
+            notes: [
+                'target_info, trait_priority, and contradiction_target must each have length equal to trait count.',
+                'Adaptive selection chooses questions by computing a need vector and scoring candidates against expected information gain.',
+            ],
+        },
+    });
+
+export type AdaptiveSelectionConfig = z.infer<typeof adaptiveSelectionConfigSchema>;
+
 export const scoringConfigSchema = z
     .looseObject({
         prior_info: z.number().positive().default(1).meta({ description: 'Default prior information value used by adaptive scoring.' }),
+        adaptive_selection: adaptiveSelectionConfigSchema.optional().meta({ description: 'Adaptive question selection configuration. Required when question_ordering is adaptive.' }),
     })
     .meta({
         description: 'Scoring-related configuration for the whole quiz definition.',
@@ -169,6 +210,7 @@ export const quizDefinitionSchema = z
         definition_version: z.number().int().positive().meta({ description: 'Monotonic version for the current definition snapshot.' }),
         title: z.string().min(1).meta({ description: 'Human-facing quiz title.' }),
         description: z.string().default('').meta({ description: 'Optional quiz description.' }),
+        question_ordering: questionOrderingSchema.default('ordered').meta({ description: 'Controls how questions are sequenced during a quiz session.' }),
         traits: z.array(traitSchema).meta({ description: 'Ordered trait definitions used by all questions.' }),
         questions: z.array(questionSchema).meta({ description: 'Ordered question definitions in the quiz.' }),
         scoring_config: scoringConfigSchema,
@@ -193,6 +235,31 @@ export const quizDefinitionSchema = z
 
         if (!uniqueValues(archetypeIds)) {
             ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Archetype IDs must be unique.' });
+        }
+
+        if (definition.scoring_config.adaptive_selection) {
+            const cfg = definition.scoring_config.adaptive_selection;
+            const vectorFields = [
+                ['target_info', cfg.target_info],
+                ['trait_priority', cfg.trait_priority],
+                ['contradiction_target', cfg.contradiction_target],
+            ] as const;
+
+            for (const [fieldName, vec] of vectorFields) {
+                if (vec.length !== traitCount) {
+                    ctx.addIssue({
+                        code: z.ZodIssueCode.custom,
+                        message: `scoring_config.adaptive_selection.${fieldName} length (${vec.length}) must equal trait count (${traitCount}).`,
+                    });
+                }
+            }
+
+            if (cfg.min_questions >= cfg.max_questions) {
+                ctx.addIssue({
+                    code: z.ZodIssueCode.custom,
+                    message: 'scoring_config.adaptive_selection.min_questions must be less than max_questions.',
+                });
+            }
         }
 
         if (definition.questions.length > 0 && traitCount === 0) {
@@ -371,11 +438,12 @@ export const updateQuizMetadataSchema = z
         op: z.literal('update_quiz_metadata'),
         title: z.string().min(1).optional(),
         description: z.string().optional(),
+        question_ordering: questionOrderingSchema.optional(),
     })
     .meta({
         description: 'Update top-level quiz metadata without changing traits or questions.',
         docs: {
-            notes: ['This operation only affects title and description.'],
+            notes: ['This operation affects title, description, and question_ordering.'],
         },
     });
 
@@ -625,6 +693,7 @@ export const createDefaultQuizDefinition = (title: string, description = ''): Qu
         definition_version: 1,
         title,
         description,
+        question_ordering: 'ordered',
         traits: [],
         questions: [],
         scoring_config: {
@@ -760,6 +829,7 @@ export const applyQuizEditPatch = async (
                     ...nextDefinition,
                     title: operation.title ?? nextDefinition.title,
                     description: operation.description ?? nextDefinition.description,
+                    question_ordering: operation.question_ordering ?? nextDefinition.question_ordering,
                 };
                 break;
             }

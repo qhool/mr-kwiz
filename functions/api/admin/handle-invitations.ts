@@ -19,6 +19,7 @@ const invitationSelect = [
     'expires_at',
     'revoked_at',
     'result_sharing_mode',
+    'shareback_name',
     'created_at',
     'updated_at',
 ].join(', ');
@@ -136,7 +137,8 @@ export const handleAdminInvitationsPost = async (
                 label: payload.label,
                 max_uses: payload.max_uses,
                 quiz_id: quiz.id,
-                   result_sharing_mode: payload.result_sharing_mode,
+                result_sharing_mode: payload.result_sharing_mode,
+                shareback_name: payload.shareback_name,
             })
             .select(invitationSelect)
             .single();
@@ -178,7 +180,8 @@ export const handleAdminInvitationPatch = async (
             .from('quiz_invitations')
             .update({
                 max_uses: payload.max_uses,
-                   result_sharing_mode: payload.result_sharing_mode,
+                result_sharing_mode: payload.result_sharing_mode,
+                shareback_name: payload.shareback_name,
             })
             .eq('id', invitationId)
             .eq('quiz_id', quiz.id)

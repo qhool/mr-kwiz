@@ -74,6 +74,8 @@ const sharingModeDescriptions: Record<QuizInvitation['result_sharing_mode'], str
 
 const sharingModeOptions: QuizInvitation['result_sharing_mode'][] = ['off', 'opt_in', 'opt_out', 'mandatory'];
 
+const requiresSharebackName = (mode: QuizInvitation['result_sharing_mode']) => mode !== 'off';
+
 const statusStyle = (status: ReturnType<typeof getQuizInvitationStatus>): React.CSSProperties => {
     const palette = {
         active: { background: '#e5f4df', border: '#84ad6a', color: '#20481f' },
@@ -101,6 +103,7 @@ const QuizInvitationsPage: React.FC = () => {
     const [invitations, setInvitations] = React.useState<QuizInvitation[]>([]);
     const [draftMaxUses, setDraftMaxUses] = React.useState<Record<string, string>>({});
     const [draftSharingModes, setDraftSharingModes] = React.useState<Record<string, QuizInvitation['result_sharing_mode']>>({});
+    const [draftSharebackNames, setDraftSharebackNames] = React.useState<Record<string, string>>({});
     const [message, setMessage] = React.useState<string | null>(null);
     const [pageError, setPageError] = React.useState<string | null>(null);
     const [isLoadingInvitations, setIsLoadingInvitations] = React.useState(true);
@@ -108,6 +111,7 @@ const QuizInvitationsPage: React.FC = () => {
     const [createLabel, setCreateLabel] = React.useState('');
     const [createMaxUses, setCreateMaxUses] = React.useState('');
     const [createSharingMode, setCreateSharingMode] = React.useState<QuizInvitation['result_sharing_mode']>('off');
+    const [createSharebackName, setCreateSharebackName] = React.useState('');
     const [busyInvitationId, setBusyInvitationId] = React.useState<string | null>(null);
     const [isCreating, setIsCreating] = React.useState(false);
 
@@ -122,6 +126,9 @@ const QuizInvitationsPage: React.FC = () => {
         );
         setDraftSharingModes(
             Object.fromEntries(nextInvitations.map((invitation) => [invitation.id, invitation.result_sharing_mode]))
+        );
+        setDraftSharebackNames(
+            Object.fromEntries(nextInvitations.map((invitation) => [invitation.id, invitation.shareback_name]))
         );
     }, []);
 
@@ -162,6 +169,7 @@ const QuizInvitationsPage: React.FC = () => {
         setCreateLabel('');
         setCreateMaxUses('');
         setCreateSharingMode('off');
+        setCreateSharebackName('');
     };
 
     const copyText = async (text: string) => {
@@ -200,12 +208,17 @@ const QuizInvitationsPage: React.FC = () => {
         }
 
         try {
+            if (requiresSharebackName(createSharingMode) && createSharebackName.trim().length === 0) {
+                throw new Error('Share-back name is required when result sharing is enabled.');
+            }
+
             setIsCreating(true);
             const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/invitations`, {
                 body: JSON.stringify({
                     label: createLabel.trim(),
                     max_uses: normalizeMaxUsesInput(createMaxUses),
                     result_sharing_mode: createSharingMode,
+                    shareback_name: createSharebackName.trim(),
                 }),
                 headers: {
                     'content-type': 'application/json',
@@ -241,11 +254,18 @@ const QuizInvitationsPage: React.FC = () => {
         }
 
         try {
+            const draftMode = draftSharingModes[invitationId] ?? 'off';
+            const draftSharebackName = draftSharebackNames[invitationId] ?? '';
+            if (requiresSharebackName(draftMode) && draftSharebackName.trim().length === 0) {
+                throw new Error('Share-back name is required when result sharing is enabled.');
+            }
+
             setBusyInvitationId(invitationId);
             const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/invitations/${encodeURIComponent(invitationId)}`, {
                 body: JSON.stringify({
                     max_uses: normalizeMaxUsesInput(draftMaxUses[invitationId] ?? ''),
-                    result_sharing_mode: draftSharingModes[invitationId] ?? 'off',
+                    result_sharing_mode: draftMode,
+                    shareback_name: draftSharebackName.trim(),
                 }),
                 headers: {
                     'content-type': 'application/json',
@@ -414,6 +434,18 @@ const QuizInvitationsPage: React.FC = () => {
                                 </select>
                                 <div style={{ color: '#6b5734', fontSize: '0.88rem' }}>{sharingModeDescriptions[createSharingMode]}</div>
                             </label>
+                            <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '1rem' }}>
+                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>
+                                    Share-Back Name {requiresSharebackName(createSharingMode) ? '(required)' : '(optional)'}
+                                </span>
+                                <input
+                                    onChange={(event) => setCreateSharebackName(event.target.value)}
+                                    placeholder="Example: Acme Team"
+                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    type="text"
+                                    value={createSharebackName}
+                                />
+                            </label>
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
                                 <button
                                     disabled={isCreating}
@@ -474,6 +506,10 @@ const QuizInvitationsPage: React.FC = () => {
                                         <div style={{ fontWeight: 700 }}>{sharingModeLabels[invitation.result_sharing_mode]}</div>
                                     </div>
                                     <div>
+                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Share-Back Name</div>
+                                        <div style={{ fontWeight: 700 }}>{invitation.shareback_name.trim() || '—'}</div>
+                                    </div>
+                                    <div>
                                         <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Invitation Path</div>
                                         <div style={{ fontSize: '0.86rem', wordBreak: 'break-all' }}>/invite/{invitation.invitation_key}</div>
                                     </div>
@@ -518,6 +554,24 @@ const QuizInvitationsPage: React.FC = () => {
                                         </select>
                                         <div style={{ color: '#6b5734', fontSize: '0.82rem' }}>{sharingModeDescriptions[draftSharingModes[invitation.id] ?? invitation.result_sharing_mode]}</div>
                                     </label>
+                                    <label style={{ display: 'grid', gap: '0.35rem' }}>
+                                        <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>
+                                            Share-Back Name {requiresSharebackName(draftSharingModes[invitation.id] ?? invitation.result_sharing_mode) ? '(required)' : '(optional)'}
+                                        </span>
+                                        <input
+                                            disabled={isBusy}
+                                            onChange={(event) =>
+                                                setDraftSharebackNames((current) => ({
+                                                    ...current,
+                                                    [invitation.id]: event.target.value,
+                                                }))
+                                            }
+                                            placeholder="Example: Acme Team"
+                                            style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                            type="text"
+                                            value={draftSharebackNames[invitation.id] ?? invitation.shareback_name}
+                                        />
+                                    </label>
                                 </div>
 
                                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
@@ -529,7 +583,7 @@ const QuizInvitationsPage: React.FC = () => {
                                         style={{ background: '#30291f', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.1rem' }}
                                         type="button"
                                     >
-                                        {isBusy ? 'Saving…' : 'Save Max Uses'}
+                                        {isBusy ? 'Saving…' : 'Save Invitation Settings'}
                                     </button>
                                     <button
                                         disabled={isBusy}

@@ -1,4 +1,5 @@
 import {
+    respondentPickupCreateRequestSchema,
     getNextQuestionId,
     respondentAnswerRequestSchema,
     respondentInvitationPickupSchema,
@@ -50,6 +51,7 @@ const getInvitationByKey = async (env: Partial<AppEnv>, invitationKey: string) =
             'expires_at',
             'revoked_at',
             'result_sharing_mode',
+            'shareback_name',
             'deleted_at',
             'created_at',
             'updated_at',
@@ -78,8 +80,19 @@ const assertInvitationIsUsable = (invitation: InvitationRow) => {
     }
 };
 
-const shouldAutoCreateViewKey = (resultSharingMode: InvitationRow['result_sharing_mode']) => {
-    return resultSharingMode === 'opt_out' || resultSharingMode === 'mandatory';
+const shouldCreateSharebackViewKey = (
+    resultSharingMode: InvitationRow['result_sharing_mode'],
+    shareResultsWithInviter: boolean | undefined
+) => {
+    if (resultSharingMode === 'off') {
+        return false;
+    }
+
+    if (resultSharingMode === 'mandatory') {
+        return true;
+    }
+
+    return shareResultsWithInviter ?? (resultSharingMode === 'opt_out');
 };
 
 const insertResponseViewKey = async (
@@ -139,7 +152,9 @@ const ensureQuizSnapshot = async (
     const inserted = await supabase
         .from('quiz_definition_snapshots')
         .insert({
-            definition,
+            // QuizDefinition is structurally a valid JSON object; looseObject index signature causes Json type incompatibility
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            definition: definition as any,
             definition_version: quiz.current_definition_version,
             quiz_id: quiz.id,
         })
@@ -238,11 +253,17 @@ export const handleRespondentInvitationGet = async (
         }
 
         assertInvitationIsUsable(invitation);
+        const definition = quizDefinitionSchema.parse(invitation.quizzes.current_definition);
 
         return json(
             respondentInvitationPickupSchema.parse({
                 invitation: quizInvitationSchema.parse(invitation),
-                quiz: invitation.quizzes,
+                quiz: {
+                    description: invitation.quizzes.description,
+                    id: invitation.quizzes.id,
+                    intro_markdown: definition.display_config.intro_markdown,
+                    title: invitation.quizzes.title,
+                },
             })
         );
     } catch (error) {
@@ -268,6 +289,12 @@ export const handleRespondentInvitationPickupPost = async (
             return json({ error: 'Invitation not found.' }, { status: 404 });
         }
 
+        const parsedPayload = respondentPickupCreateRequestSchema.parse(
+            await request
+                .json()
+                .catch(() => ({}))
+        );
+
         assertInvitationIsUsable(invitation);
         const snapshot = await ensureQuizSnapshot(supabase, invitation.quizzes);
         const definition = quizDefinitionSchema.parse(snapshot.definition);
@@ -291,7 +318,12 @@ export const handleRespondentInvitationPickupPost = async (
             throw insertedResponse.error;
         }
 
-        if (shouldAutoCreateViewKey(invitation.result_sharing_mode)) {
+        if (
+            shouldCreateSharebackViewKey(
+                invitation.result_sharing_mode,
+                parsedPayload.share_results_with_inviter
+            )
+        ) {
             await insertResponseViewKey(supabase, {
                 invitation_id: invitation.id,
                 response_id: insertedResponse.data.id,

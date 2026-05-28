@@ -81,7 +81,9 @@ export const handleAdminEditPost = async (
         const { data, error } = await supabase
             .from('quizzes')
             .update({
-                current_definition: persistedDefinition,
+                // QuizDefinition is structurally a valid JSON object; looseObject index signature causes Json type incompatibility
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                current_definition: persistedDefinition as any,
                 current_definition_version: nextDefinitionVersion,
                 title: persistedDefinition.title,
                 description: persistedDefinition.description,

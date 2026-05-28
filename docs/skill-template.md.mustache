@@ -58,8 +58,67 @@ If the edit cannot be safely produced without clarification, ask the user the mi
 * Quiz has questions: {{has_questions}}
 * Question count: {{question_count}}
 * Trait count: {{trait_count}}
+* Question ordering: {{question_ordering}}
 
 {{{schema_reference}}}
+
+## Question Ordering
+
+This quiz uses **{{question_ordering}}** question ordering.
+
+{{#question_ordering}}
+{{/question_ordering}}
+- **ordered** — questions are presented in fixed `display_order` sequence. Suitable for quizzes where question flow has intentional narrative or warm-up structure.
+- **random** — questions are shuffled into a session-stable random order at the start of each response session. Useful for reducing ordering bias.
+- **adaptive** — questions are selected dynamically based on a per-trait information-gain model. The quiz presents the most informative questions for the current respondent state. Requires `scoring_config.adaptive_selection` to be configured.
+
+To change the ordering mode, use `update_quiz_metadata` with `"question_ordering": "ordered" | "random" | "adaptive"`.
+
+{{#has_adaptive_selection}}
+{{{adaptive_selection_section}}}
+
+### Adaptive Selection Algorithm Summary
+
+The adaptive selector computes a **need vector** over all traits:
+
+```
+deficit[t] = max(0, target_info[t] - currentInfo[t])
+deficitRatio[t] = deficit[t] / target_info[t]
+coverageNeed[t] = deficitRatio[t] ^ need_power
+
+uncertainty[t] = 1 / sqrt(prior_info + currentInfo[t])
+uncertaintyNeed[t] = uncertainty_weight * uncertainty[t]
+
+contradictionRatio[t] = min(1, contradiction[t] / contradiction_target[t])
+contradictionNeed[t] = contradiction_followup_weight * contradictionRatio[t] * min(1, currentInfo[t] / target_info[t])
+
+need[t] = trait_priority[t] * (coverageNeed[t] + uncertaintyNeed[t] + contradictionNeed[t])
+```
+
+For each candidate question (active, adaptive_eligible, not yet answered), the selector computes:
+
+```
+expectedInfo[t] = avg over responses of information_matrix[r, t]
+needAlignedGain = dot(expectedInfo, need)
+axisPurity = cosine(expectedInfo, need)
+offAxisPenalty = off_axis_penalty * dot(expectedInfo, saturation)
+recentRedundancyPenalty = recent_redundancy_penalty * max cosine similarity to last recent_window answers
+skipPenalty = skipped_penalty if previously skipped in session, else 0
+rawScore = needAlignedGain - offAxisPenalty - recentRedundancyPenalty - skipPenalty
+adaptiveGoodness = rawScore / max(epsilon, sum(need))   [clamped 0..1]
+```
+
+A batch of `candidate_count` questions is selected greedily from the top `candidate_pool_size` by raw score, penalizing inter-batch similarity by `batch_diversity_penalty`.
+
+**Stopping rules** (after min_questions):
+- Stop if all `currentInfo[t] >= target_info[t]`.
+- Stop if best candidate's `adaptiveGoodness < min_goodness_to_ask`.
+- Always stop at `max_questions`.
+
+**Matrix indexing reminder:** `values[response_index * trait_count + trait_index]` (row-major, rows = responses, cols = traits).
+
+When authoring questions for adaptive quizzes, set `adaptive_eligible: true` on questions you want the selector to use, and `false` on fixed warm-up or closing questions.
+{{/has_adaptive_selection}}
 
 {{{trait_order}}}
 

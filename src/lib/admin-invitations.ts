@@ -16,6 +16,7 @@ export const quizInvitationSchema = z.object({
     expires_at: z.string().nullable(),
     revoked_at: z.string().nullable(),
     result_sharing_mode: resultSharingModeSchema,
+    shareback_name: z.string(),
     shared_view_keys: z.array(responseViewKeySchema).default([]),
     created_at: z.string(),
     updated_at: z.string(),
@@ -30,11 +31,34 @@ export const createQuizInvitationRequestSchema = z.strictObject({
     label: z.string().optional().default(''),
     max_uses: z.number().int().positive().nullable().optional().default(null),
     result_sharing_mode: resultSharingModeSchema.optional().default('off'),
+    shareback_name: z.string().optional().default(''),
+}).superRefine((payload, ctx) => {
+    if (payload.result_sharing_mode !== 'off' && payload.shareback_name.trim().length === 0) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Share-back name is required when result sharing is enabled.',
+            path: ['shareback_name'],
+        });
+    }
 });
 
 export const updateQuizInvitationRequestSchema = z.strictObject({
     max_uses: z.number().int().positive().nullable().optional(),
     result_sharing_mode: resultSharingModeSchema.optional(),
+    shareback_name: z.string().optional(),
+}).superRefine((payload, ctx) => {
+    if (
+        payload.result_sharing_mode !== undefined &&
+        payload.result_sharing_mode !== 'off' &&
+        payload.shareback_name !== undefined &&
+        payload.shareback_name.trim().length === 0
+    ) {
+        ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: 'Share-back name is required when result sharing is enabled.',
+            path: ['shareback_name'],
+        });
+    }
 });
 
 export type QuizInvitation = z.infer<typeof quizInvitationSchema>;

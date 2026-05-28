@@ -144,6 +144,16 @@ const QuizEditPage: React.FC = () => {
                         ? `${metadata.title} · definition version ${metadata.current_definition_version}`
                         : 'Loading quiz definition...'}
                 </p>
+                {definition ? (
+                    <p style={{ color: '#6b5734', margin: '0.35rem 0 0' }}>
+                        Question ordering: <strong>{definition.question_ordering ?? 'ordered'}</strong>
+                        {definition.question_ordering === 'adaptive' && definition.scoring_config.adaptive_selection
+                            ? ` · adaptive config present (min ${definition.scoring_config.adaptive_selection.min_questions}–max ${definition.scoring_config.adaptive_selection.max_questions} questions)`
+                            : definition.question_ordering === 'adaptive'
+                            ? ' · ⚠ adaptive_selection config missing in scoring_config'
+                            : null}
+                    </p>
+                ) : null}
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
                     <button
                         disabled={isLoading || !definition || !metadata}

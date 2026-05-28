@@ -78,6 +78,7 @@ export type Database = {
           max_uses: number | null
           quiz_id: string
           result_sharing_mode: Database["public"]["Enums"]["result_sharing_mode"]
+          shareback_name: string
           revoked_at: string | null
           updated_at: string
           use_count: number
@@ -93,6 +94,7 @@ export type Database = {
           max_uses?: number | null
           quiz_id: string
           result_sharing_mode?: Database["public"]["Enums"]["result_sharing_mode"]
+          shareback_name?: string
           revoked_at?: string | null
           updated_at?: string
           use_count?: number
@@ -108,6 +110,7 @@ export type Database = {
           max_uses?: number | null
           quiz_id?: string
           result_sharing_mode?: Database["public"]["Enums"]["result_sharing_mode"]
+          shareback_name?: string
           revoked_at?: string | null
           updated_at?: string
           use_count?: number

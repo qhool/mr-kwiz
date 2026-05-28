@@ -1,8 +1,10 @@
 import { z } from 'zod';
 
-import type { Archetype, Question, QuizDefinition, Trait } from './quiz-definition';
+import { resultSharingModeSchema } from './admin-invitations';
+import type { Archetype, AdaptiveSelectionConfig, Question, QuizDefinition, Trait } from './quiz-definition';
 
 const RESPONDENT_STORAGE_KEY = 'mrkwiz.respondentSessions.v1';
+const RESPONDENT_SKIP_INTRO_PREFIX = 'mrkwiz.skipIntroForResponse.';
 
 export const storedRespondentSessionSchema = z.object({
     last_interacted_at: z.string(),
@@ -23,13 +25,20 @@ export const respondentInvitationPickupSchema = z.object({
         label: z.string(),
         max_uses: z.number().int().positive().nullable(),
         quiz_id: z.string().uuid(),
+        result_sharing_mode: resultSharingModeSchema,
+        shareback_name: z.string(),
         use_count: z.number().int().nonnegative(),
     }),
     quiz: z.object({
         description: z.string(),
         id: z.string().uuid(),
+        intro_markdown: z.string().optional().default(''),
         title: z.string().min(1),
     }),
+});
+
+export const respondentPickupCreateRequestSchema = z.object({
+    share_results_with_inviter: z.boolean().optional(),
 });
 
 export const respondentPickupCreateResponseSchema = z.object({
@@ -77,6 +86,7 @@ export const respondentAnswerResponseSchema = respondentSessionSchema;
 export type StoredRespondentSession = z.infer<typeof storedRespondentSessionSchema>;
 export type AnsweredQuestion = z.infer<typeof answeredQuestionSchema>;
 export type RespondentInvitationPickup = z.infer<typeof respondentInvitationPickupSchema>;
+export type RespondentPickupCreateRequest = z.infer<typeof respondentPickupCreateRequestSchema>;
 export type RespondentPickupCreateResponse = z.infer<typeof respondentPickupCreateResponseSchema>;
 export type RespondentSession = z.infer<typeof respondentSessionSchema>;
 export type RespondentAnswerRequest = z.infer<typeof respondentAnswerRequestSchema>;
@@ -107,6 +117,7 @@ export type RespondentSessionScoreSummary = {
         question: Question;
         selectedResponseIndex: number;
     }>;
+    currentInfo: number[];    // trait-ordered accumulated information totals
     scores: Record<string, number>;
     selectedArchetype?: SelectedArchetypeInfo;
     traitStats: Record<string, TraitStatistics>;
@@ -210,6 +221,9 @@ export const getSelectedArchetypeDisplay = (
 
 const hasWindow = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
 
+const hasSessionStorage = () =>
+    typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+
 const parseStoredSessions = (raw: string | null): StoredRespondentSession[] => {
     if (!raw) {
         return [];
@@ -238,6 +252,28 @@ export const listStoredRespondentSessions = (): StoredRespondentSession[] => {
     return parseStoredSessions(window.localStorage.getItem(RESPONDENT_STORAGE_KEY)).sort(
         (left, right) => new Date(right.last_interacted_at).getTime() - new Date(left.last_interacted_at).getTime()
     );
+};
+
+export const markRespondentIntroSkipped = (responseKey: string) => {
+    if (!hasSessionStorage()) {
+        return;
+    }
+
+    window.sessionStorage.setItem(`${RESPONDENT_SKIP_INTRO_PREFIX}${responseKey}`, '1');
+};
+
+export const consumeRespondentIntroSkipped = (responseKey: string): boolean => {
+    if (!hasSessionStorage()) {
+        return false;
+    }
+
+    const key = `${RESPONDENT_SKIP_INTRO_PREFIX}${responseKey}`;
+    const hasSkip = window.sessionStorage.getItem(key) === '1';
+    if (hasSkip) {
+        window.sessionStorage.removeItem(key);
+    }
+
+    return hasSkip;
 };
 
 export const saveStoredRespondentSession = (
@@ -400,8 +436,12 @@ export const computeRespondentScores = (
         };
     }
 
+    // Compute currentInfo: total accumulated information per trait in trait order
+    const currentInfo: number[] = traitIds.map((traitId) => traitAccumulators[traitId]?.weightSum ?? 0);
+
     return {
         answeredQuestions,
+        currentInfo,
         scores,
         selectedArchetype: selectArchetype(definition, finalTraitStats),
         traitStats: finalTraitStats,
@@ -435,4 +475,285 @@ export const getStrongSignalQuestionIdsByTrait = (
             return [traitId, rankedQuestionIds];
         })
     );
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Random mode: deterministic per-session shuffle keyed by response key
+// ──────────────────────────────────────────────────────────────────────────────
+
+const seededRandom = (seed: number): (() => number) => {
+    let s = seed;
+    return () => {
+        s = (s * 1664525 + 1013904223) & 0xffffffff;
+        return (s >>> 0) / 0x100000000;
+    };
+};
+
+const stringToSeed = (str: string): number => {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = Math.imul(31, hash) + str.charCodeAt(i);
+        hash |= 0;
+    }
+    return hash;
+};
+
+export const getRandomOrderedActiveQuestions = (definition: QuizDefinition, responseKey: string): Question[] => {
+    const questions = getOrderedActiveQuestions(definition);
+    const rng = seededRandom(stringToSeed(responseKey));
+    const shuffled = [...questions];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j]!, shuffled[i]!];
+    }
+    return shuffled;
+};
+
+export const getNextRandomQuestionId = (
+    definition: QuizDefinition,
+    answers: AnsweredQuestion[],
+    responseKey: string
+): string | null => {
+    const answeredIds = new Set(answers.map((a) => a.question_id));
+    return getRandomOrderedActiveQuestions(definition, responseKey).find((q) => !answeredIds.has(q.id))?.id ?? null;
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Adaptive mode: information-gain candidate selection
+// ──────────────────────────────────────────────────────────────────────────────
+
+export type AdaptiveCandidate = {
+    question_id: string;
+    expected_info: number[];
+    axis_purity: number;
+    need_aligned_gain: number;
+    off_axis_penalty: number;
+    recent_redundancy_penalty: number;
+    skipped_penalty: number;
+    batch_diversity_penalty: number;
+    raw_adaptive_score: number;
+    adaptive_goodness: number;
+    top_target_traits: string[];
+};
+
+const dot = (a: number[], b: number[]): number => a.reduce((sum, v, i) => sum + v * (b[i] ?? 0), 0);
+
+const norm = (a: number[]): number => Math.sqrt(a.reduce((sum, v) => sum + v * v, 0));
+
+const cosine = (a: number[], b: number[]): number => {
+    const nb = norm(b);
+    if (nb === 0) return 1;
+    const na = norm(a);
+    if (na === 0) return 0;
+    return dot(a, b) / (na * nb);
+};
+
+const computeExpectedInfo = (question: Question, traitCount: number): number[] => {
+    const responseCount = question.responses.length;
+    if (responseCount === 0) return new Array<number>(traitCount).fill(0);
+    const sums = new Array<number>(traitCount).fill(0);
+    for (let r = 0; r < responseCount; r++) {
+        for (let t = 0; t < traitCount; t++) {
+            sums[t] = (sums[t] ?? 0) + (question.information_matrix.values[r * traitCount + t] ?? 0);
+        }
+    }
+    return sums.map((s) => s / responseCount);
+};
+
+export const selectAdaptiveCandidates = (
+    definition: QuizDefinition,
+    answers: AnsweredQuestion[],
+    skippedIds: Set<string>,
+    cfg: AdaptiveSelectionConfig,
+    scoreSummary: RespondentSessionScoreSummary
+): AdaptiveCandidate[] => {
+    const traitIds = definition.traits
+        .slice()
+        .sort((left, right) => left.display_order - right.display_order)
+        .map((t) => t.id);
+    const traitCount = traitIds.length;
+    const answeredIds = new Set(answers.map((a) => a.question_id));
+    const { currentInfo, traitStats } = scoreSummary;
+    const prior_info = definition.scoring_config.prior_info ?? 1;
+
+    const need = traitIds.map((traitId, t) => {
+        const info = currentInfo[t] ?? 0;
+        const target = cfg.target_info[t] ?? 0;
+        const deficit = Math.max(0, target - info);
+        const deficitRatio = target > 0 ? deficit / target : 0;
+        const coverageNeed = Math.pow(deficitRatio, cfg.need_power);
+        const uncertainty = 1 / Math.sqrt(prior_info + info);
+        const uncertaintyNeed = cfg.uncertainty_weight * uncertainty;
+        const stat = traitStats[traitId];
+        const contradictionRatio = stat && stat.contradiction > 0
+            ? Math.min(1, stat.contradiction / (cfg.contradiction_target[t] ?? 0.25))
+            : 0;
+        const contradictionNeed = cfg.contradiction_followup_weight * contradictionRatio * Math.min(1, target > 0 ? info / target : 0);
+        return (cfg.trait_priority[t] ?? 1) * (coverageNeed + uncertaintyNeed + contradictionNeed);
+    });
+
+    const needSum = need.reduce((s, v) => s + v, 0);
+    const epsilon = 1e-9;
+
+    const saturation = traitIds.map((_, t) => {
+        const info = currentInfo[t] ?? 0;
+        const target = cfg.target_info[t] ?? 0;
+        return target > 0 ? Math.max(0, info - target) / target : 0;
+    });
+
+    const recentAnswers = answers.slice(-cfg.recent_window);
+    const recentExpectedInfos = recentAnswers
+        .map((a) => definition.questions.find((q) => q.id === a.question_id))
+        .filter((q): q is Question => !!q)
+        .map((q) => computeExpectedInfo(q, traitCount));
+
+    const candidatePool = getOrderedActiveQuestions(definition)
+        .filter((q) => q.adaptive_eligible && !answeredIds.has(q.id));
+
+    const scored = candidatePool.map((q) => {
+        const expectedInfo = computeExpectedInfo(q, traitCount);
+        const needAlignedGain = dot(expectedInfo, need);
+        const axisPurity = cosine(expectedInfo, need);
+        const offAxisPenaltyVal = cfg.off_axis_penalty * dot(expectedInfo, saturation);
+        const recentSimilarity = recentExpectedInfos.length > 0
+            ? Math.max(...recentExpectedInfos.map((ri) => cosine(expectedInfo, ri)))
+            : 0;
+        const recentRedundancyPenaltyVal = cfg.recent_redundancy_penalty * recentSimilarity;
+        const skippedPenaltyVal = skippedIds.has(q.id) ? cfg.skipped_penalty : 0;
+        const rawScore = needAlignedGain - offAxisPenaltyVal - recentRedundancyPenaltyVal - skippedPenaltyVal;
+        const adaptiveGoodness = Math.max(0, Math.min(1, rawScore / Math.max(epsilon, needSum)));
+        const topTargetTraits = traitIds
+            .map((id, i) => ({ id, value: (expectedInfo[i] ?? 0) * (need[i] ?? 0) }))
+            .filter((e) => e.value > 0)
+            .sort((a, b) => b.value - a.value)
+            .slice(0, 3)
+            .map((e) => e.id);
+        return {
+            question: q,
+            expectedInfo,
+            axisPurity,
+            needAlignedGain,
+            offAxisPenalty: offAxisPenaltyVal,
+            recentRedundancyPenalty: recentRedundancyPenaltyVal,
+            skippedPenalty: skippedPenaltyVal,
+            rawScore,
+            adaptiveGoodness,
+            topTargetTraits,
+        };
+    });
+
+    const answeredCount = answers.length;
+    const filtered = scored.filter(
+        (c) => c.adaptiveGoodness >= cfg.min_goodness_to_ask || answeredCount < cfg.min_questions
+    );
+
+    const pool = filtered
+        .slice()
+        .sort((a, b) => b.rawScore - a.rawScore)
+        .slice(0, cfg.candidate_pool_size);
+
+    // Greedy diverse batch selection
+    const selected: typeof pool = [];
+    const remaining = [...pool];
+
+    while (selected.length < cfg.candidate_count && remaining.length > 0) {
+        let bestIndex = 0;
+        let bestScore = -Infinity;
+        for (let i = 0; i < remaining.length; i++) {
+            const candidate = remaining[i]!;
+            const diversityPenalty = selected.length > 0
+                ? cfg.batch_diversity_penalty * Math.max(...selected.map((s) => cosine(candidate.expectedInfo, s.expectedInfo)))
+                : 0;
+            const batchScore = candidate.rawScore - diversityPenalty;
+            if (batchScore > bestScore) {
+                bestScore = batchScore;
+                bestIndex = i;
+            }
+        }
+        const pick = remaining.splice(bestIndex, 1)[0]!;
+        selected.push(pick);
+    }
+
+    return selected.map((c) => ({
+        question_id: c.question.id,
+        expected_info: c.expectedInfo,
+        axis_purity: c.axisPurity,
+        need_aligned_gain: c.needAlignedGain,
+        off_axis_penalty: c.offAxisPenalty,
+        recent_redundancy_penalty: c.recentRedundancyPenalty,
+        skipped_penalty: c.skippedPenalty,
+        batch_diversity_penalty: 0, // post-hoc per-batch value not recomputed here
+        raw_adaptive_score: c.rawScore,
+        adaptive_goodness: c.adaptiveGoodness,
+        top_target_traits: c.topTargetTraits,
+    }));
+};
+
+export const isAdaptiveQuizComplete = (
+    definition: QuizDefinition,
+    answers: AnsweredQuestion[],
+    candidates: AdaptiveCandidate[]
+): boolean => {
+    const cfg = definition.scoring_config.adaptive_selection;
+    if (!cfg) return isQuizComplete(definition, answers);
+
+    const answeredCount = answers.length;
+    if (answeredCount >= cfg.max_questions) return true;
+    if (answeredCount < cfg.min_questions) return false;
+
+    const traitCount = definition.traits.length;
+    if (traitCount > 0) {
+        const scoreSummary = computeRespondentScores(definition, answers);
+        const allCovered = cfg.target_info.every((target, t) => (scoreSummary.currentInfo[t] ?? 0) >= target);
+        if (allCovered) return true;
+    }
+
+    const bestGoodness = candidates[0]?.adaptive_goodness ?? 0;
+    return bestGoodness < cfg.min_goodness_to_ask;
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Client-only adaptive session state (sessionStorage, per response key)
+// ──────────────────────────────────────────────────────────────────────────────
+
+const ADAPTIVE_SKIPPED_PREFIX = 'mrkwiz.adaptiveSkipped.';
+const ADAPTIVE_BATCH_PREFIX = 'mrkwiz.adaptiveBatch.';
+
+export const getAdaptiveSkippedIds = (responseKey: string): Set<string> => {
+    if (!hasSessionStorage()) return new Set();
+    try {
+        const raw = window.sessionStorage.getItem(`${ADAPTIVE_SKIPPED_PREFIX}${responseKey}`) ?? '[]';
+        return new Set(JSON.parse(raw) as string[]);
+    } catch {
+        return new Set();
+    }
+};
+
+export const addAdaptiveSkippedId = (responseKey: string, questionId: string): void => {
+    if (!hasSessionStorage()) return;
+    const current = getAdaptiveSkippedIds(responseKey);
+    current.add(questionId);
+    window.sessionStorage.setItem(`${ADAPTIVE_SKIPPED_PREFIX}${responseKey}`, JSON.stringify([...current]));
+};
+
+export const getAdaptiveBatch = (responseKey: string): AdaptiveCandidate[] => {
+    if (!hasSessionStorage()) return [];
+    try {
+        const raw = window.sessionStorage.getItem(`${ADAPTIVE_BATCH_PREFIX}${responseKey}`);
+        if (!raw) return [];
+        return JSON.parse(raw) as AdaptiveCandidate[];
+    } catch {
+        return [];
+    }
+};
+
+export const setAdaptiveBatch = (responseKey: string, batch: AdaptiveCandidate[]): void => {
+    if (!hasSessionStorage()) return;
+    window.sessionStorage.setItem(`${ADAPTIVE_BATCH_PREFIX}${responseKey}`, JSON.stringify(batch));
+};
+
+export const clearAdaptiveSessionState = (responseKey: string): void => {
+    if (!hasSessionStorage()) return;
+    window.sessionStorage.removeItem(`${ADAPTIVE_SKIPPED_PREFIX}${responseKey}`);
+    window.sessionStorage.removeItem(`${ADAPTIVE_BATCH_PREFIX}${responseKey}`);
 };
