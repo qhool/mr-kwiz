@@ -104,11 +104,24 @@ export const QuizIntroScreen: React.FC<{
 export const QuizQuestionScreen: React.FC<{
     eyebrow?: string;
     onSelectResponse?: (responseId: string) => void;
+    progressLabel?: string;
+    progressMessage?: string;
+    progressPercent?: number;
     question: Question | null;
     questionIndex: number;
     questionCount: number;
     selectedResponseId?: string | null;
-}> = ({ eyebrow, onSelectResponse, question, questionCount, questionIndex, selectedResponseId }) => {
+}> = ({
+    eyebrow,
+    onSelectResponse,
+    progressLabel,
+    progressMessage,
+    progressPercent,
+    question,
+    questionCount,
+    questionIndex,
+    selectedResponseId,
+}) => {
     if (!question) {
         return (
             <QuizPreviewSurface eyebrow={eyebrow} subtitle="Create at least one question to preview the participant experience." title="Question Preview">
@@ -120,9 +133,37 @@ export const QuizQuestionScreen: React.FC<{
     return (
         <QuizPreviewSurface
             eyebrow={eyebrow}
-            subtitle={`Question ${questionIndex + 1} of ${questionCount}`}
+            subtitle={progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}
             title={question.prompt}
         >
+            <div style={{ marginBottom: '1rem' }}>
+                <div
+                    aria-hidden
+                    style={{
+                        background: '#e4dcc8',
+                        borderRadius: 999,
+                        height: 10,
+                        overflow: 'hidden',
+                        width: '100%',
+                    }}
+                >
+                    <div
+                        style={{
+                            background: 'linear-gradient(90deg, #7a5c37, #9b7c4f)',
+                            height: '100%',
+                            transition: 'width 220ms ease',
+                            width: `${Math.max(0, Math.min(100, progressPercent ?? 0))}%`,
+                        }}
+                    />
+                </div>
+                <div style={{ color: '#5a4a2f', display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.45rem' }}>
+                    <span>{progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}</span>
+                    <span>{Math.round(Math.max(0, Math.min(100, progressPercent ?? 0)))}%</span>
+                </div>
+                {progressMessage ? (
+                    <div style={{ color: '#6a5032', fontSize: '0.88rem', marginTop: '0.35rem' }}>{progressMessage}</div>
+                ) : null}
+            </div>
             {question.help_text ? <div style={{ marginBottom: '1.25rem' }}>{renderMarkdown(question.help_text)}</div> : null}
             <div style={{ display: 'grid', gap: '0.9rem' }}>
                 {question.responses.map((response) => (

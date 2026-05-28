@@ -6,6 +6,11 @@ import { RespondentAnswersPanel } from '../../components/respondent-answers-pane
 import { RespondentShell } from '../../components/respondent-shell';
 import { RespondentViewKeyModal } from '../../components/respondent-view-key-modal';
 import { useRespondentSession } from '../../hooks/useRespondentSession';
+import { ADAPTIVE_PROGRESS_PHASES } from '../../lib/adaptive-progress-phases';
+import {
+    computeAdaptiveCompletionPercent,
+    findAdaptivePhaseForPercent,
+} from '../../lib/adaptive-progress';
 import { buildRespondentResultsPrompt } from '../../lib/respondent-results-prompt';
 import {
     consumeRespondentIntroSkipped,
@@ -36,6 +41,7 @@ const QuizSessionPage: React.FC = () => {
     const [storedSessions, setStoredSessions] = React.useState(listStoredRespondentSessions());
     // Adaptive/random: client-owned current question id override
     const [clientQuestionId, setClientQuestionId] = React.useState<string | null>(null);
+    const [adaptivePhaseId, setAdaptivePhaseId] = React.useState<string | null>(null);
 
     React.useEffect(() => {
         if (!responseKey) {
@@ -109,6 +115,87 @@ const QuizSessionPage: React.FC = () => {
     const currentQuestionIndex = currentQuestion
         ? orderedQuestions.findIndex((question) => question.id === currentQuestion.id)
         : -1;
+    const ordering = definition?.question_ordering ?? 'ordered';
+    const answeredCount = session?.answers.length ?? 0;
+
+    const progressPercent = React.useMemo(() => {
+        if (!definition || !session) {
+            return 0;
+        }
+
+        if (ordering === 'adaptive') {
+            return computeAdaptiveCompletionPercent(definition, session.answers);
+        }
+
+        const total = Math.max(1, orderedQuestions.length);
+        return Math.max(0, Math.min(100, (answeredCount / total) * 100));
+    }, [answeredCount, definition, ordering, orderedQuestions.length, session]);
+
+    const progressLabel = React.useMemo(() => {
+        if (!definition || !session) {
+            return 'Question 0 of 0';
+        }
+
+        if (ordering === 'adaptive') {
+            const cfg = definition.scoring_config.adaptive_selection;
+            const minQuestions = cfg?.min_questions ?? 0;
+            const maxQuestions = cfg?.max_questions ?? minQuestions;
+            return `Adaptive progress ${Math.round(progressPercent)}% (${answeredCount} answered, min ${minQuestions}, max ${maxQuestions})`;
+        }
+
+        const total = orderedQuestions.length;
+        const n = total > 0 ? Math.min(answeredCount + 1, total) : 0;
+        return `Question ${n} of ${total}`;
+    }, [answeredCount, definition, ordering, orderedQuestions.length, progressPercent, session]);
+
+    const currentAdaptivePhase = React.useMemo(() => {
+        if (ordering !== 'adaptive') {
+            return null;
+        }
+
+        const byId = adaptivePhaseId
+            ? ADAPTIVE_PROGRESS_PHASES.find((phase) => phase.id === adaptivePhaseId)
+            : null;
+        if (byId) {
+            return byId;
+        }
+
+        return findAdaptivePhaseForPercent(ADAPTIVE_PROGRESS_PHASES, 0);
+    }, [adaptivePhaseId, ordering]);
+
+    React.useEffect(() => {
+        if (ordering !== 'adaptive') {
+            setAdaptivePhaseId(null);
+            return;
+        }
+
+        const initial = findAdaptivePhaseForPercent(
+            ADAPTIVE_PROGRESS_PHASES,
+            answeredCount === 0 ? 0 : progressPercent
+        );
+        if (!adaptivePhaseId && initial) {
+            setAdaptivePhaseId(initial.id);
+            return;
+        }
+
+        const currentPhase = adaptivePhaseId
+            ? ADAPTIVE_PROGRESS_PHASES.find((phase) => phase.id === adaptivePhaseId)
+            : null;
+        if (!currentPhase) {
+            return;
+        }
+
+        // Phase message advances only when current range upper bound is reached.
+        if (progressPercent >= currentPhase.maxPercent) {
+            const next = findAdaptivePhaseForPercent(ADAPTIVE_PROGRESS_PHASES, progressPercent);
+            if (next && next.id !== currentPhase.id) {
+                setAdaptivePhaseId(next.id);
+            }
+        }
+    }, [adaptivePhaseId, answeredCount, ordering, progressPercent]);
+
+    const progressMessage = ordering === 'adaptive' ? currentAdaptivePhase?.message : undefined;
+
     const scoreSummary = React.useMemo(() => {
         if (!definition || !session) {
             return null;
@@ -131,7 +218,6 @@ const QuizSessionPage: React.FC = () => {
             !showIntro &&
             (() => {
                 if (session.response.state === 'submitted') return true;
-                const ordering = definition?.question_ordering ?? 'ordered';
                 if (ordering === 'adaptive') {
                     const cfg = definition?.scoring_config.adaptive_selection;
                     if (cfg && scoreSummary) {
@@ -281,6 +367,9 @@ const QuizSessionPage: React.FC = () => {
                             onSelectResponse={(answerId) => {
                                 void handleAnswer(answerId);
                             }}
+                            progressLabel={progressLabel}
+                            progressMessage={progressMessage}
+                            progressPercent={progressPercent}
                             question={currentQuestion}
                             questionCount={orderedQuestions.length}
                             questionIndex={Math.max(0, currentQuestionIndex)}
