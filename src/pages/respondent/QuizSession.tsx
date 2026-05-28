@@ -35,7 +35,6 @@ const QuizSessionPage: React.FC = () => {
     const { definition, error, isLoading, isSubmittingAnswer, session, submitAnswer } = useRespondentSession(responseKey);
 
     const [copyMessage, setCopyMessage] = React.useState<string | null>(null);
-    const [hasStarted, setHasStarted] = React.useState(false);
     const [isShareModalOpen, setIsShareModalOpen] = React.useState(false);
     const [skipIntro, setSkipIntro] = React.useState(false);
     const [storedSessions, setStoredSessions] = React.useState(listStoredRespondentSessions());
@@ -208,6 +207,7 @@ const QuizSessionPage: React.FC = () => {
     }, [adaptivePhaseId, answeredCount, ordering, progressPercent]);
 
     const progressMessage = ordering === 'adaptive' ? currentAdaptivePhase?.message : undefined;
+    const currentSessionUrl = responseKey ? `${window.location.origin}/quiz/${encodeURIComponent(responseKey)}` : '';
 
     const scoreSummary = React.useMemo(() => {
         if (!definition || !session) {
@@ -217,14 +217,7 @@ const QuizSessionPage: React.FC = () => {
         return computeRespondentScores(definition, session.answers);
     }, [definition, session]);
 
-    const showIntro = Boolean(
-        session &&
-            definition &&
-            session.answers.length === 0 &&
-            !hasStarted &&
-            !skipIntro &&
-            session.response.state === 'started'
-    );
+    const showIntro = false;
     const showResults = Boolean(
         session &&
             definition &&
@@ -324,6 +317,24 @@ const QuizSessionPage: React.FC = () => {
         }
     };
 
+    const handleCopySessionLink = async () => {
+        if (!currentSessionUrl) {
+            return;
+        }
+
+        if (!navigator.clipboard?.writeText) {
+            setCopyMessage('Clipboard API is not available in this browser context.');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(currentSessionUrl);
+            setCopyMessage('Copied resume link to clipboard.');
+        } catch (error) {
+            setCopyMessage(error instanceof Error ? error.message : 'Failed to copy resume link.');
+        }
+    };
+
     if (!responseKey) {
         return null;
     }
@@ -353,25 +364,6 @@ const QuizSessionPage: React.FC = () => {
             <div style={{ margin: '0 auto', maxWidth: 980 }}>
 
                 {isLoading || !definition || !session ? <div>Loading your quiz...</div> : null}
-
-                {!isLoading && definition && session && showIntro ? (
-                    <>
-                        <QuizIntroScreen
-                            definition={definition}
-                            emptyStateMessage="Take a moment to get ready, then start when you are ready."
-                            suppressDefaultAdminIntro
-                        />
-                        <div style={{ marginTop: '1rem' }}>
-                            <button
-                                onClick={() => setHasStarted(true)}
-                                style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.85rem 1.4rem' }}
-                                type="button"
-                            >
-                                Start Quiz
-                            </button>
-                        </div>
-                    </>
-                ) : null}
 
                 {!isLoading && definition && session && !showIntro && !showResults ? (
                     <>
@@ -409,6 +401,45 @@ const QuizSessionPage: React.FC = () => {
                                 </button>
                             </div>
                         ) : null}
+
+                        <div style={{ marginTop: '1.35rem' }}>
+                            <div style={{ color: '#6b5734', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.55rem', textTransform: 'uppercase' }}>
+                                Use this link to resume on another device
+                            </div>
+                            <div style={{ alignItems: 'center', display: 'flex', gap: '0.6rem' }}>
+                                <input
+                                    readOnly
+                                    value={currentSessionUrl}
+                                    style={{
+                                        background: '#fcfbf8',
+                                        border: '1px solid #c8bfa9',
+                                        borderRadius: 12,
+                                        color: '#241d14',
+                                        flex: 1,
+                                        minWidth: 0,
+                                        padding: '0.75rem 0.9rem',
+                                    }}
+                                />
+                                <button
+                                    onClick={() => {
+                                        void handleCopySessionLink();
+                                    }}
+                                    style={{
+                                        background: 'transparent',
+                                        border: '1px solid #245a78',
+                                        borderRadius: 999,
+                                        color: '#245a78',
+                                        cursor: 'pointer',
+                                        fontWeight: 700,
+                                        padding: '0.65rem 1rem',
+                                        whiteSpace: 'nowrap',
+                                    }}
+                                    type="button"
+                                >
+                                    Copy
+                                </button>
+                            </div>
+                        </div>
                     </>
                 ) : null}
 
