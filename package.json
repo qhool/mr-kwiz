@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
+    "test:functions": "vitest run -c vitest.functions.config.ts",
     "test:smoke:api": "vitest run -c vitest.smoke.config.ts",
     "test:smoke:api:staging": "vitest run -c vitest.smoke.config.ts tests/smoke/deployment-api-smoke.test.ts",
     "test:db:safe": "bash ./scripts/test-with-db-backup.sh",
