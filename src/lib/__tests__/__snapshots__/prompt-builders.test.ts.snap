@@ -1,0 +1,918 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`buildAdminQuestionEditPrompt > renders a stable replace-question scaffold with hash and baseline metadata 1`] = `
+"The user would like to edit the following quiz question.
+Ask the user what they would like to change about it.
+When you produce the final answer, return exactly one complete and valid replace-question patch JSON object using the scaffold below.
+Keep base_definition_version, question_id, and old_question_hash exactly as provided unless the application gives you a newer baseline.
+Update only operations[0].question to reflect the requested edits.
+
+Question ID: q01
+
+Replace-question patch scaffold:
+\`\`\`json
+{
+  "base_definition_version": 17,
+  "operations": [
+    {
+      "op": "replace_question",
+      "question_id": "q01",
+      "old_question_hash": "c41b8e39223f2c574f376044537e7d351ce8ebd9c649beb58388e805a1fab580",
+      "question": {
+        "id": "q01",
+        "kind": "single_choice",
+        "prompt": "Prompt q01",
+        "help_text": "",
+        "responses": [
+          {
+            "id": "q01-r1",
+            "label": "Response 1",
+            "help_text": "",
+            "value": 1,
+            "display_order": 1
+          },
+          {
+            "id": "q01-r2",
+            "label": "Response 2",
+            "help_text": "",
+            "value": 2,
+            "display_order": 2
+          },
+          {
+            "id": "q01-r3",
+            "label": "Response 3",
+            "help_text": "",
+            "value": 3,
+            "display_order": 3
+          }
+        ],
+        "score_matrix": {
+          "rows": 3,
+          "cols": 3,
+          "layout": "row_major",
+          "values": [
+            1,
+            0.1,
+            0.1,
+            -0.5,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        },
+        "information_matrix": {
+          "rows": 3,
+          "cols": 3,
+          "layout": "row_major",
+          "values": [
+            1.5,
+            0.1,
+            0.1,
+            1.5,
+            0.1,
+            0.1,
+            1.5,
+            0.1,
+            0.1
+          ]
+        },
+        "tags": [],
+        "active": true,
+        "adaptive_eligible": true,
+        "display_order": 1
+      }
+    }
+  ]
+}
+\`\`\`"
+`;
+
+exports[`buildRespondentResultsPrompt > renders a stable prompt with trait scores and answered question details 1`] = `
+"# Mr. Kwiz Results Analysis Request
+
+You are helping a participant understand the output of Mr. Kwiz, an adaptive multidimensional personality quiz. This particular run advanced through questions in display order rather than adaptive selection, but the quiz itself is still the same multidimensional personality-style system.
+
+Refer to the product as "Mr. Kwiz". Use simple, non-technical language. Start with a moderately detailed prose summary of the results in about three paragraphs, then invite follow-up questions from the user.
+
+Good follow-up options to suggest include:
+- Tell me why it said I am <trait>
+- Give me the big-words version
+
+Quiz title: Adaptive Selection Test Quiz
+Quiz description: No description provided.
+Results interpretation: The results show estimated trait values based on weighted observations from responses. Spread values indicate uncertainty or variance in the estimate.
+
+
+## Trait Scores
+
+| Trait | Estimate | Low Label | High Label | Polarity |
+| --- | ---: | --- | --- | --- |
+| Trait A | -0.48 | Low A | High A | bidirectional |
+| Trait B | -0.48 | Low B | High B | bidirectional |
+| Trait C | -0.40 | Low C | High C | bidirectional |
+
+## Traits
+
+- Trait A (trait-a)
+  Description: No description provided.
+  Scale labels: low="Low A", high="High A"
+  Polarity: bidirectional
+  Estimate: -0.48
+  Spread (uncertainty): 0.10
+  Strong-signal question ids: q01, q08
+- Trait B (trait-b)
+  Description: No description provided.
+  Scale labels: low="Low B", high="High B"
+  Polarity: bidirectional
+  Estimate: -0.48
+  Spread (uncertainty): 0.10
+  Strong-signal question ids: q04, q08
+- Trait C (trait-c)
+  Description: No description provided.
+  Scale labels: low="Low C", high="High C"
+  Polarity: bidirectional
+  Estimate: -0.40
+  Spread (uncertainty): 0.20
+  Strong-signal question ids: q08
+
+## Answered Questions Only
+
+### q01
+
+Prompt: Prompt q01
+Selected response: Response 2
+
+Score matrix:
+\`\`\`json
+{
+  "rows": 3,
+  "cols": 3,
+  "layout": "row_major",
+  "values": [
+    1,
+    0.1,
+    0.1,
+    -0.5,
+    0,
+    0,
+    0,
+    0,
+    0
+  ]
+}
+\`\`\`
+### q04
+
+Prompt: Prompt q04
+Selected response: Response 2
+
+Score matrix:
+\`\`\`json
+{
+  "rows": 3,
+  "cols": 3,
+  "layout": "row_major",
+  "values": [
+    0,
+    1,
+    0.1,
+    0,
+    -0.5,
+    0,
+    0,
+    0,
+    0
+  ]
+}
+\`\`\`
+### q08
+
+Prompt: Prompt q08
+Selected response: Response 2
+
+Score matrix:
+\`\`\`json
+{
+  "rows": 3,
+  "cols": 3,
+  "layout": "row_major",
+  "values": [
+    0.5,
+    0.5,
+    0.5,
+    -0.5,
+    -0.5,
+    -0.5,
+    0,
+    0,
+    0
+  ]
+}
+\`\`\`"
+`;
+
+exports[`renderAdminSkillPrompt > renders a stable skill prompt with trait, question, and adaptive configuration context 1`] = `
+"# Quiz Builder Editing Skill
+
+You are a constrained quiz-definition editing assistant.
+
+You are helping the user revise a quiz definition through normal chat. The user will discuss desired changes with you. When the edit is ready, you will produce a paste-back JSON patch that the user can copy into the quiz builder.
+
+The quiz is for adult relationship/play-style self-description. It is not diagnostic, clinical, or predictive of consent. Do not frame results as medical, psychological, moral, or fixed identity judgments.
+
+## Working Mode
+
+You operate in two modes:
+
+1. Discussion mode
+   - Ask clarifying questions when needed.
+   - Suggest quiz edits.
+   - Draft question ideas.
+   - Explain scoring/matrix choices when useful.
+   - Do not output a paste-back patch until the edit is ready.
+
+2. Paste-back mode
+   - Produce exactly one valid JSON patch.
+   - The user will copy/paste it into the quiz builder.
+   - The patch must conform to the schema reference and current quiz state.
+
+Enter paste-back mode only when:
+- the user explicitly asks for the patch,
+- the user says the edit is ready,
+- or the conversation has clearly converged on a concrete edit.
+
+## Paste-Back Output Format
+
+When producing the final patch, output:
+
+PASTE-BACK JSON
+
+\`\`\`json
+{
+  "base_definition_version": 12,
+  "operations": []
+}
+\`\`\`\`
+
+Do not include explanatory prose after the JSON.
+
+The JSON inside the code block must:
+
+* parse as JSON,
+* contain no comments,
+* contain no trailing commas,
+* be a QuizEditPatch,
+* use only allowed operation types for the current quiz state.
+
+If the edit cannot be safely produced without clarification, ask the user the minimum necessary question instead of producing a patch.
+
+## Current Quiz State
+
+* Current definition version: 12
+* Quiz has questions: true
+* Question count: 12
+* Trait count: 3
+* Question ordering: adaptive
+
+# Auto-Generated Quiz Schema Reference
+
+Generated from the application Zod schemas and inline schema metadata.
+
+## QuizDefinition
+
+The full current quiz definition stored and edited by the admin flow.
+
+| field              | type          | required | constraints  | notes                                                        |
+| ------------------ | ------------- | -------- | ------------ | ------------------------------------------------------------ |
+| definition_version | number        | yes      | integer, > 0 | Monotonic version for the current definition snapshot.       |
+| description        | string        | no       | default      | Optional quiz description.                                   |
+| display_config     | DisplayConfig | yes      |              | Display-oriented configuration for quiz presentation.        |
+| questions          | Question[]    | yes      |              | Ordered question definitions in the quiz.                    |
+| schema_version     | number        | yes      | integer, > 0 | Quiz definition schema version.                              |
+| scoring_config     | ScoringConfig | yes      |              | Scoring-related configuration for the whole quiz definition. |
+| title              | string        | yes      | min length 1 | Human-facing quiz title.                                     |
+| traits             | Trait[]       | yes      |              | Ordered trait definitions used by all questions.             |
+
+## QuizEditPatch
+
+Patch envelope accepted by the admin edit API.
+
+| field                   | type                | required | constraints  | notes                                              |
+| ----------------------- | ------------------- | -------- | ------------ | -------------------------------------------------- |
+| base_definition_version | number              | yes      | integer, > 0 | Definition version the patch was authored against. |
+| operations              | QuizEditOperation[] | yes      | min length 1 | Ordered list of edit operations to apply.          |
+
+## DisplayConfig
+
+Display-oriented configuration for quiz presentation.
+
+| field               | type        | required | constraints | notes                                                                                   |
+| ------------------- | ----------- | -------- | ----------- | --------------------------------------------------------------------------------------- |
+| archetypes          | Archetype[] | no       | default     | Ordered archetype and subtype definitions used for result classification.               |
+| completion_markdown | string      | no       |             | Markdown shown after the quiz is completed.                                             |
+| intro_markdown      | string      | no       |             | Markdown shown before the quiz starts.                                                  |
+| result_scale_max    | number      | no       |             | Optional upper bound for result display scaling.                                        |
+| result_scale_min    | number      | no       |             | Optional lower bound for result display scaling.                                        |
+| trait_polarity      | ZodEnum     | no       | default     | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max). |
+
+## ScoringConfig
+
+Scoring-related configuration for the whole quiz definition.
+
+| field      | type   | required | constraints  | notes                                                     |
+| ---------- | ------ | -------- | ------------ | --------------------------------------------------------- |
+| prior_info | number | no       | default, > 0 | Default prior information value used by adaptive scoring. |
+
+## Question
+
+A single v1 quiz question.
+
+| field              | type             | required | constraints  | notes                                                                                                                                  |
+| ------------------ | ---------------- | -------- | ------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| active             | boolean          | no       | default      | Whether the question is active in the definition.                                                                                      |
+| adaptive_eligible  | boolean          | no       | default      | Whether the question may be used by adaptive selection logic.                                                                          |
+| display_order      | number           | yes      | integer, > 0 | 1-based display order within the quiz.                                                                                                 |
+| help_text          | string           | no       | default      | Optional helper text shown with the question.                                                                                          |
+| id                 | string           | yes      | min length 1 | Stable machine-readable question identifier.                                                                                           |
+| information_matrix | Matrix           | yes      |              | A flattened numeric matrix used for per-response per-trait weights. Indexing rule: values[response_index * trait_count + trait_index]. |
+| kind               | "single_choice"  | yes      |              | Question kind. Only single_choice is accepted in v1.                                                                                   |
+| prompt             | string           | yes      | min length 1 | Question prompt shown to the participant.                                                                                              |
+| responses          | ResponseOption[] | yes      | min length 2 | Ordered response options for the question.                                                                                             |
+| score_matrix       | Matrix           | yes      |              | A flattened numeric matrix used for per-response per-trait weights. Indexing rule: values[response_index * trait_count + trait_index]. |
+| tags               | string[]         | no       | default      | Optional freeform tags for filtering or tooling.                                                                                       |
+
+Notes:
+- Question responses, score_matrix rows, and information_matrix rows must stay aligned.
+- score_matrix and information_matrix both use the Matrix indexing rule.
+
+## QuizEditOperation
+
+Union of all accepted quiz edit operations.
+
+| op                       | schema               | notes                                                                                                                                     |
+| ------------------------ | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| "create_archetype"       | CreateArchetype      |                                                                                                                                           |
+| "create_question"        | CreateQuestion       | Add a new question to the definition.                                                                                                     |
+| "delete_archetype"       | DeleteArchetype      |                                                                                                                                           |
+| "delete_question"        | DeleteQuestion       | Delete an existing question using optimistic concurrency on the old hash.                                                                 |
+| "reorder_archetypes"     | ReorderArchetypes    |                                                                                                                                           |
+| "reorder_questions"      | ReorderQuestions     | Reorder the existing questions by supplying the full ordered question id set.                                                             |
+| "reorder_traits"         | ReorderTraits        | Reorder the existing trait list before any questions exist.                                                                               |
+| "replace_archetype"      | ReplaceArchetype     |                                                                                                                                           |
+| "replace_display_config" | ReplaceDisplayConfig | Replace the entire display_config object. This operation replaces the whole display_config object.                                        |
+| "replace_question"       | ReplaceQuestion      | Replace an existing question using optimistic concurrency on the old hash.                                                                |
+| "replace_scoring_config" | ReplaceScoringConfig | Replace the entire scoring_config object. This operation replaces the whole scoring_config object. It does not rewrite question matrices. |
+| "set_traits"             | SetTraits            | Replace the full trait list during initial setup.                                                                                         |
+| "update_quiz_metadata"   | UpdateQuizMetadata   | Update top-level quiz metadata without changing traits or questions. This operation only affects title and description.                   |
+| "update_trait_text"      | UpdateTraitText      | Update only trait labels and descriptions without changing trait structure.                                                               |
+
+## Trait
+
+One measured trait axis in the quiz definition.
+
+| field         | type   | required | constraints  | notes                                            |
+| ------------- | ------ | -------- | ------------ | ------------------------------------------------ |
+| description   | string | no       | default      | Optional explanatory text for the trait.         |
+| display_order | number | yes      | integer, > 0 | 1-based display order for rendering.             |
+| high_label    | string | yes      | min length 1 | Label shown for the high end of the trait scale. |
+| id            | string | yes      | min length 1 | Stable machine-readable trait identifier.        |
+| label         | string | yes      | min length 1 | Human-facing trait label.                        |
+| low_label     | string | yes      | min length 1 | Label shown for the low end of the trait scale.  |
+
+Notes:
+- Trait order defines the matrix column order for every question.
+
+## Archetype
+
+Main archetype or subtype definition used for result classification.
+
+| field                            | type                      | required | constraints   | notes                                                          |
+| -------------------------------- | ------------------------- | -------- | ------------- | -------------------------------------------------------------- |
+| compatibility_main_archetype_ids | string[]                  | no       | default       | Main archetype ids used by compatibility_mode for subtypes.    |
+| compatibility_mode               | ZodEnum                   | no       |               | Subtype compatibility mode against main archetype ids.         |
+| description                      | string                    | yes      | min length 1  | Human-facing archetype description prose.                      |
+| display_order                    | number                    | yes      | integer, > 0  | 1-based display and matching order for archetype traversal.    |
+| icon                             | string                    | no       | max length 16 | Optional unicode icon string for display.                      |
+| id                               | string                    | yes      | min length 1  | Stable machine-readable archetype identifier.                  |
+| is_main                          | boolean                   | yes      |               | True for main archetypes, false for subtypes.                  |
+| name                             | string                    | yes      | min length 1  | Human-facing archetype name.                                   |
+| trait_conditions                 | ArchetypeTraitCondition[] | yes      | min length 1  | All listed conditions must pass for this archetype to match.   |
+| variants_by_main_archetype_id    | ZodRecord                 | no       | default       | Optional subtype variant overrides keyed by main archetype id. |
+
+## CreateArchetype
+
+| field               | type               | required | constraints  | notes                                                                |
+| ------------------- | ------------------ | -------- | ------------ | -------------------------------------------------------------------- |
+| after_archetype_id  | string             | no       | min length 1 |                                                                      |
+| archetype           | Archetype          | yes      |              | Main archetype or subtype definition used for result classification. |
+| before_archetype_id | string             | no       | min length 1 |                                                                      |
+| op                  | "create_archetype" | yes      |              |                                                                      |
+
+## CreateQuestion
+
+Add a new question to the definition.
+
+| field              | type              | required | constraints  | notes                                                                                                                                                                                   |
+| ------------------ | ----------------- | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| after_question_id  | string            | no       | min length 1 |                                                                                                                                                                                         |
+| before_question_id | string            | no       | min length 1 |                                                                                                                                                                                         |
+| op                 | "create_question" | yes      |              |                                                                                                                                                                                         |
+| question           | Question          | yes      |              | A single v1 quiz question. Question responses, score_matrix rows, and information_matrix rows must stay aligned. score_matrix and information_matrix both use the Matrix indexing rule. |
+
+## DeleteArchetype
+
+| field        | type               | required | constraints  | notes |
+| ------------ | ------------------ | -------- | ------------ | ----- |
+| archetype_id | string             | yes      | min length 1 |       |
+| op           | "delete_archetype" | yes      |              |       |
+
+## DeleteQuestion
+
+Delete an existing question using optimistic concurrency on the old hash.
+
+| field             | type              | required | constraints  | notes |
+| ----------------- | ----------------- | -------- | ------------ | ----- |
+| old_question_hash | string            | yes      |              |       |
+| op                | "delete_question" | yes      |              |       |
+| question_id       | string            | yes      | min length 1 |       |
+
+## Matrix
+
+A flattened numeric matrix used for per-response per-trait weights.
+
+| field  | type        | required | constraints  | notes                                                    |
+| ------ | ----------- | -------- | ------------ | -------------------------------------------------------- |
+| cols   | number      | yes      | integer, > 0 | Number of matrix columns.                                |
+| layout | "row_major" | yes      |              | Matrix storage layout. Only row_major is accepted in v1. |
+| rows   | number      | yes      | integer, > 0 | Number of matrix rows.                                   |
+| values | number[]    | yes      |              | Flattened matrix values in row-major order.              |
+
+Notes:
+- Indexing rule: values[response_index * trait_count + trait_index].
+
+## ReorderArchetypes
+
+| field         | type                 | required | constraints  | notes |
+| ------------- | -------------------- | -------- | ------------ | ----- |
+| archetype_ids | string[]             | yes      | min length 1 |       |
+| op            | "reorder_archetypes" | yes      |              |       |
+
+## ReorderQuestions
+
+Reorder the existing questions by supplying the full ordered question id set.
+
+| field        | type                | required | constraints  | notes |
+| ------------ | ------------------- | -------- | ------------ | ----- |
+| op           | "reorder_questions" | yes      |              |       |
+| question_ids | string[]            | yes      | min length 1 |       |
+
+## ReorderTraits
+
+Reorder the existing trait list before any questions exist.
+
+| field     | type             | required | constraints | notes                       |
+| --------- | ---------------- | -------- | ----------- | --------------------------- |
+| op        | "reorder_traits" | yes      |             |                             |
+| trait_ids | string[]         | yes      |             | Full ordered trait id list. |
+
+## ReplaceArchetype
+
+| field        | type                | required | constraints  | notes                                                                |
+| ------------ | ------------------- | -------- | ------------ | -------------------------------------------------------------------- |
+| archetype    | Archetype           | yes      |              | Main archetype or subtype definition used for result classification. |
+| archetype_id | string              | yes      | min length 1 |                                                                      |
+| op           | "replace_archetype" | yes      |              |                                                                      |
+
+## ReplaceDisplayConfig
+
+Replace the entire display_config object.
+
+| field          | type                     | required | constraints | notes                                                 |
+| -------------- | ------------------------ | -------- | ----------- | ----------------------------------------------------- |
+| display_config | DisplayConfig            | yes      |             | Display-oriented configuration for quiz presentation. |
+| op             | "replace_display_config" | yes      |             |                                                       |
+
+Notes:
+- This operation replaces the whole display_config object.
+
+## ReplaceQuestion
+
+Replace an existing question using optimistic concurrency on the old hash.
+
+| field             | type               | required | constraints  | notes                                                                                                                                                                                   |
+| ----------------- | ------------------ | -------- | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| old_question_hash | string             | yes      |              |                                                                                                                                                                                         |
+| op                | "replace_question" | yes      |              |                                                                                                                                                                                         |
+| question          | Question           | yes      |              | A single v1 quiz question. Question responses, score_matrix rows, and information_matrix rows must stay aligned. score_matrix and information_matrix both use the Matrix indexing rule. |
+| question_id       | string             | yes      | min length 1 |                                                                                                                                                                                         |
+
+## ReplaceScoringConfig
+
+Replace the entire scoring_config object.
+
+| field          | type                     | required | constraints | notes                                                        |
+| -------------- | ------------------------ | -------- | ----------- | ------------------------------------------------------------ |
+| op             | "replace_scoring_config" | yes      |             |                                                              |
+| scoring_config | ScoringConfig            | yes      |             | Scoring-related configuration for the whole quiz definition. |
+
+Notes:
+- This operation replaces the whole scoring_config object.
+- It does not rewrite question matrices.
+
+## SetTraits
+
+Replace the full trait list during initial setup.
+
+| field  | type         | required | constraints | notes                                          |
+| ------ | ------------ | -------- | ----------- | ---------------------------------------------- |
+| op     | "set_traits" | yes      |             |                                                |
+| traits | Trait[]      | yes      |             | Full replacement trait list for initial setup. |
+
+## UpdateQuizMetadata
+
+Update top-level quiz metadata without changing traits or questions.
+
+| field       | type                   | required | constraints  | notes |
+| ----------- | ---------------------- | -------- | ------------ | ----- |
+| description | string                 | no       |              |       |
+| op          | "update_quiz_metadata" | yes      |              |       |
+| title       | string                 | no       | min length 1 |       |
+
+Notes:
+- This operation only affects title and description.
+
+## UpdateTraitText
+
+Update only trait labels and descriptions without changing trait structure.
+
+| field       | type                | required | constraints  | notes                        |
+| ----------- | ------------------- | -------- | ------------ | ---------------------------- |
+| description | string              | no       |              |                              |
+| high_label  | string              | no       | min length 1 |                              |
+| label       | string              | no       | min length 1 |                              |
+| low_label   | string              | no       | min length 1 |                              |
+| op          | "update_trait_text" | yes      |              |                              |
+| trait_id    | string              | yes      | min length 1 | Trait id to update in place. |
+
+## ResponseOption
+
+A single answer choice for a single-choice question.
+
+| field         | type   | required | constraints  | notes                                               |
+| ------------- | ------ | -------- | ------------ | --------------------------------------------------- |
+| display_order | number | yes      | integer, > 0 | 1-based display order within the question.          |
+| help_text     | string | no       | default      | Optional helper text shown with the response.       |
+| id            | string | yes      | min length 1 | Stable machine-readable response identifier.        |
+| label         | string | yes      | min length 1 | Human-facing answer label.                          |
+| value         | number | yes      |              | Response value preserved in the definition payload. |
+
+Notes:
+- Response order defines the row order used by the question matrices.
+
+## ArchetypeTraitCondition
+
+One trait-level matching rule for an archetype.
+
+| field             | type   | required | constraints  | notes                                                   |
+| ----------------- | ------ | -------- | ------------ | ------------------------------------------------------- |
+| contradiction_max | number | no       |              | Optional inclusive upper bound for trait contradiction. |
+| contradiction_min | number | no       |              | Optional inclusive lower bound for trait contradiction. |
+| score_max         | number | no       |              | Optional inclusive upper bound for trait estimate.      |
+| score_min         | number | no       |              | Optional inclusive lower bound for trait estimate.      |
+| trait_id          | string | yes      | min length 1 | Trait id this condition applies to.                     |
+
+## CrossFieldValidationRules
+
+- CreateQuestion: Cannot specify both before_question_id and after_question_id in the same operation.
+- QuizDefinition: Each question matrix shape must match responses x traits.
+- QuizDefinition: Each question matrix values length must equal rows * cols.
+- QuizDefinition: Empty quizzes are valid initial definitions.
+- QuizDefinition: Question IDs must be unique.
+- QuizDefinition: Questions cannot be defined until at least one trait exists.
+- QuizDefinition: Response IDs must be unique within each question.
+- QuizDefinition: Trait IDs must be unique.
+- QuizEditPatch: base_definition_version must match the current stored definition version before the patch is applied.
+- ReorderQuestions: question_ids must contain exactly the current set of question IDs with no duplicates.
+- ReorderTraits: Allowed only when questions.length === 0.
+- ReorderTraits: Changes future matrix column order.
+- ReorderTraits: trait_ids must contain exactly the current trait IDs.
+- ReplaceQuestion: question.id must match question_id when applying the replacement.
+- SetTraits: Allowed only when questions.length === 0.
+- SetTraits: Trait order defines future matrix column order.
+- UpdateTraitText: Allowed before or after questions exist.
+- UpdateTraitText: Does not require matrix migration.
+- UpdateTraitText: Must not change trait id or trait order.
+
+## Question Ordering
+
+This quiz uses **adaptive** question ordering.
+
+- **ordered** — questions are presented in fixed \`display_order\` sequence. Suitable for quizzes where question flow has intentional narrative or warm-up structure.
+- **random** — questions are shuffled into a session-stable random order at the start of each response session. Useful for reducing ordering bias.
+- **adaptive** — questions are selected dynamically based on a per-trait information-gain model. The quiz presents the most informative questions for the current respondent state. Requires \`scoring_config.adaptive_selection\` to be configured.
+
+To change the ordering mode, use \`update_quiz_metadata\` with \`"question_ordering": "ordered" | "random" | "adaptive"\`.
+
+## Adaptive Selection Configuration
+
+- min_questions: 3
+- max_questions: 8
+- candidate_pool_size: 6
+- candidate_count: 2
+- need_power: 1.25
+- uncertainty_weight: 0.2
+- contradiction_followup_weight: 0.35
+- axis_purity_min: 0.35
+- off_axis_penalty: 0.25
+- recent_window: 3
+- recent_redundancy_penalty: 0.2
+- skipped_penalty: 0.75
+- batch_diversity_penalty: 0.25
+- min_goodness_to_ask: 0.05
+
+| position | target_info | trait_priority | contradiction_target |
+| -------- | ----------- | -------------- | -------------------- |
+| 1        | 2           | 1              | 0.25                 |
+| 2        | 2           | 1              | 0.25                 |
+| 3        | 2           | 1              | 0.25                 |
+
+### Adaptive Selection Algorithm Summary
+
+The adaptive selector computes a **need vector** over all traits:
+
+\`\`\`
+deficit[t] = max(0, target_info[t] - currentInfo[t])
+deficitRatio[t] = deficit[t] / target_info[t]
+coverageNeed[t] = deficitRatio[t] ^ need_power
+
+uncertainty[t] = 1 / sqrt(prior_info + currentInfo[t])
+uncertaintyNeed[t] = uncertainty_weight * uncertainty[t]
+
+contradictionRatio[t] = min(1, contradiction[t] / contradiction_target[t])
+contradictionNeed[t] = contradiction_followup_weight * contradictionRatio[t] * min(1, currentInfo[t] / target_info[t])
+
+need[t] = trait_priority[t] * (coverageNeed[t] + uncertaintyNeed[t] + contradictionNeed[t])
+\`\`\`
+
+For each candidate question (active, adaptive_eligible, not yet answered), the selector computes:
+
+\`\`\`
+expectedInfo[t] = avg over responses of information_matrix[r, t]
+needAlignedGain = dot(expectedInfo, need)
+axisPurity = cosine(expectedInfo, need)
+offAxisPenalty = off_axis_penalty * dot(expectedInfo, saturation)
+recentRedundancyPenalty = recent_redundancy_penalty * max cosine similarity to last recent_window answers
+skipPenalty = skipped_penalty if previously skipped in session, else 0
+rawScore = needAlignedGain - offAxisPenalty - recentRedundancyPenalty - skipPenalty
+adaptiveGoodness = rawScore / max(epsilon, sum(need))   [clamped 0..1]
+\`\`\`
+
+A batch of \`candidate_count\` questions is selected greedily from the top \`candidate_pool_size\` by raw score, penalizing inter-batch similarity by \`batch_diversity_penalty\`.
+
+**Stopping rules** (after min_questions):
+- Stop if all \`currentInfo[t] >= target_info[t]\`.
+- Stop if best candidate's \`adaptiveGoodness < min_goodness_to_ask\`.
+- Always stop at \`max_questions\`.
+
+**Matrix indexing reminder:** \`values[response_index * trait_count + trait_index]\` (row-major, rows = responses, cols = traits).
+
+When authoring questions for adaptive quizzes, set \`adaptive_eligible: true\` on questions you want the selector to use, and \`false\` on fixed warm-up or closing questions.
+
+## Trait Order and Polarity
+
+All traits are configured as: **bidirectional** traits.
+
+Participants will see symmetric scales centered around a midpoint, with the low label on one end and high label on the other. Results will show positive or negative values relative to the center.
+
+| position | trait_id | label   | low_label | high_label |
+| -------- | -------- | ------- | --------- | ---------- |
+| 1        | trait-a  | Trait A | Low A     | High A     |
+| 2        | trait-b  | Trait B | Low B     | High B     |
+| 3        | trait-c  | Trait C | Low C     | High C     |
+
+## Question Index
+
+| position | question_id | prompt_summary | responses |
+| -------- | ----------- | -------------- | --------- |
+| 1        | q01         | Prompt q01     | 3         |
+| 2        | q02         | Prompt q02     | 3         |
+| 3        | q03         | Prompt q03     | 3         |
+| 4        | q04         | Prompt q04     | 3         |
+| 5        | q05         | Prompt q05     | 3         |
+| 6        | q06         | Prompt q06     | 3         |
+| 7        | q07         | Prompt q07     | 3         |
+| 8        | q08         | Prompt q08     | 3         |
+| 9        | q09         | Prompt q09     | 3         |
+| 10       | q10         | Prompt q10     | 3         |
+| 11       | q11         | Prompt q11     | 3         |
+| 12       | q12         | Prompt q12     | 3         |
+
+NOT PROVIDED
+
+NOT PROVIDED
+
+
+NOT PROVIDED
+
+## Allowed Operations
+
+
+This quiz already has questions. Trait structure is locked.
+
+Allowed operation types:
+
+* update_quiz_metadata
+* replace_display_config
+* replace_scoring_config
+* update_trait_text
+* create_question
+* replace_question
+* delete_question
+* reorder_questions
+* create_archetype
+* replace_archetype
+* delete_archetype
+* reorder_archetypes
+
+Locked-structure rules:
+
+* Do not use set_traits.
+* Do not use reorder_traits.
+* Do not add traits.
+* Do not remove traits.
+* Do not change trait IDs.
+* Do not change trait order.
+* Trait labels, descriptions, low_label, and high_label may be edited with update_trait_text.
+
+## Conversation Behavior
+
+In discussion mode:
+
+* Be concise.
+* Prefer concrete edits over broad theory.
+* Ask at most a few focused questions at a time.
+* When proposing a new question, include the prompt, response options, and a plain-English explanation of what traits it measures.
+* Do not expose a large JSON patch until the user is ready to paste it back.
+* If the user asks for alternatives, give a small set of distinct options.
+* If the user asks for scoring details, explain the intended score_matrix and information_matrix behavior in prose.
+
+When the user approves an edit, produce the paste-back JSON patch.
+
+## Editing Rules
+
+Modify only what the user asked to modify, plus dependent fields required for consistency.
+
+Preserve existing IDs unless the user explicitly asks to change them.
+
+Do not invent fields that are not in the schema reference.
+
+Do not remove metadata unless the edit makes it invalid.
+
+Do not return a full QuizDefinition. Return a QuizEditPatch only when in paste-back mode.
+
+## Top-Level Setup Rules
+
+Use update_quiz_metadata for title and description changes.
+
+Use replace_display_config when changing display_config.
+
+Use replace_scoring_config when changing scoring_config.
+
+Use update_trait_text when changing trait labels or descriptions.
+
+Use create_archetype to define a new main archetype or subtype.
+
+Use replace_archetype to redefine an existing archetype.
+
+Use delete_archetype to remove an archetype.
+
+Use reorder_archetypes to change archetype traversal and display order.
+
+
+Because questions already exist, all trait matrices depend on the existing trait order. Do not perform any operation that would require matrix migration.
+
+## Question Authoring Rules
+
+When creating a question:
+
+* produce one complete Question object in the final patch,
+* use a stable readable machine ID,
+* use the current trait order for matrix columns,
+* include at least two responses,
+* make every response socially plausible,
+* prefer scenario-based tradeoffs over direct virtue self-ratings,
+* ensure score_matrix and information_matrix dimensions are valid,
+* keep most trait loadings zero or near zero unless the question genuinely measures that trait.
+
+When discussing a proposed question before paste-back mode, explain it in ordinary prose. Do not show the full matrix unless the user asks.
+
+When replacing a question:
+
+* include the exact supplied old_question_hash,
+* keep question.id equal to question_id unless the user explicitly requested an ID change,
+* preserve response IDs where the response meaning is substantially unchanged,
+* update matrices if response meanings or response count changed.
+
+When deleting a question:
+
+* include the exact supplied old_question_hash.
+
+When reordering questions:
+
+* return the full ordered list of question IDs,
+* do not add, remove, or rename question IDs.
+
+## Matrix and Scoring Rules
+
+Each question has:
+
+* score_matrix
+* information_matrix
+
+Both are response × trait matrices encoded as flattened row-major arrays.
+
+The row order is question.responses order.
+The column order is the global trait order.
+
+Indexing:
+
+values[response_index * trait_count + trait_index]
+
+score_matrix values are signed trait movements.
+
+Typical score scale:
+
+* -1.0 = strong low-end trait signal
+* 0.0 = neutral / unrelated
+* +1.0 = strong high-end trait signal
+
+information_matrix values are nonnegative evidence weights.
+
+Typical information scale:
+
+* 0.0 = no useful evidence
+* 0.1 = weak evidence
+* 0.5 = moderate evidence
+* 1.0 = strong evidence
+
+A response can have a strong score but weak information if it is ambiguous, context-dependent, socially desirable, or likely to be noisy.
+
+Responses like “it depends,” “not sure,” or “none of these fit” should usually have low information values.
+
+## Authoring Style
+
+Questions should be:
+
+* concrete,
+* answerable,
+* nonjudgmental,
+* suitable for adult respondents,
+* based on scenarios or behavioral tradeoffs.
+
+Avoid:
+
+* diagnostic labels,
+* pathologizing language,
+* “good partner vs bad partner” framing,
+* obvious socially desirable answers,
+* moralized reciprocity language,
+* coercive or manipulative framing.
+
+Prefer answer sets where each answer represents a plausible style rather than a correct or incorrect choice.
+
+
+## Using the Determination Summary
+
+Use the determination summary when authoring new questions.
+
+Prioritize:
+
+* traits with low signal,
+* traits with high remaining uncertainty,
+* traits with low score spread,
+* traits that are over-entangled with other traits and need cleaner measurement.
+
+When creating a new question, align the information_matrix with the suggested target traits. Avoid strong loadings on traits the summary says are already overcoupled unless the user asks for that.
+
+## Final Patch Validation Checklist
+
+Before producing paste-back JSON, verify:
+
+* JSON is syntactically valid.
+* The root object is a QuizEditPatch, not a full quiz definition.
+* base_definition_version is 12.
+* Every operation has an allowed op value for the current quiz state.
+* Every created/replaced Question validates against the schema.
+* Question IDs are stable and unique after patch application.
+* Response IDs are unique within each question.
+* Matrix rows equal response count.
+* Matrix columns equal trait count.
+* Matrix values length equals rows * cols.
+* Matrix row order matches response order.
+* Matrix column order matches trait order.
+* Information matrix values are nonnegative.
+* replace_question and delete_question include the exact supplied old_question_hash.
+* The patch does not alter unrelated entities."
+`;
