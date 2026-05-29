@@ -8,6 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "test": "vitest run",
+    "test:db:safe": "bash ./scripts/test-with-db-backup.sh",
+    "test:db:safe:keep-backup": "bash ./scripts/test-with-db-backup.sh --keep-backup",
     "serve": "vite preview",
     "create:admin-quiz": "tsx scripts/create-admin-quiz.ts",
     "deploy": "wrangler publish",

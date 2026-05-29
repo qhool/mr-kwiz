@@ -89,6 +89,23 @@ MrKwiz
    npm run supabase:types
    ```
 
+6.1 **Run tests with automatic local DB backup/restore**:
+   ```bash
+   npm run test:db:safe
+   ```
+
+   This script:
+   - uses the Supabase local Postgres container binaries for dump/restore (not your system `pg_dump`),
+   - creates a backup of your current local Supabase DB,
+   - runs `supabase db reset` for a clean test state,
+   - runs tests,
+   - restores your original local DB snapshot after tests (even on failure).
+
+   Keep the backup dump after restore if needed:
+   ```bash
+   npm run test:db:safe:keep-backup
+   ```
+
 7. **Run the Development Server**: 
    ```bash
    npm run dev
