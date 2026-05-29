@@ -7,11 +7,31 @@ cd "$ROOT_DIR"
 KEEP_BACKUP=0
 NO_STOP=0
 TEST_CMD="npm test"
+SMOKE_CMD="npm run test:smoke:api:staging"
+SMOKE_BASE_URL="http://127.0.0.1:4173"
 STARTED_BY_SCRIPT=0
 BACKUP_CREATED=0
 BACKUP_FILE=""
 BACKUP_DIR="$ROOT_DIR/.tmp/db-backups"
 DB_CONTAINER_NAME=""
+DEV_SERVER_PID=""
+SMOKE_RUN_TAG=""
+
+read_dev_var() {
+    local key="$1"
+    local value="${!key:-}"
+
+    if [[ -n "$value" ]]; then
+        printf '%s' "$value"
+        return 0
+    fi
+
+    if [[ -f "$ROOT_DIR/.dev.vars" ]]; then
+        value="$(grep -E "^${key}=" "$ROOT_DIR/.dev.vars" | tail -n 1 | cut -d= -f2- || true)"
+    fi
+
+    printf '%s' "$value"
+}
 
 log() {
     printf "\n[%s] %s\n" "db-safe-test" "$1"
@@ -58,6 +78,74 @@ resolve_db_container() {
     return 1
 }
 
+is_dev_server_ready() {
+    curl --silent --fail "${SMOKE_BASE_URL}/api/quiz" >/dev/null 2>&1
+}
+
+start_dev_server_for_smoke() {
+    if [[ -n "$DEV_SERVER_PID" ]] && kill -0 "$DEV_SERVER_PID" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    log "Starting local API server for smoke tests (${SMOKE_BASE_URL})"
+    npm run dev -- --host 127.0.0.1 --port 4173 >/tmp/mrkwiz-smoke-dev.log 2>&1 &
+    DEV_SERVER_PID="$!"
+
+    local attempts=0
+    until is_dev_server_ready; do
+        attempts=$((attempts + 1))
+        if [[ "$attempts" -gt 60 ]]; then
+            echo "Timed out waiting for local API server at ${SMOKE_BASE_URL}" >&2
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+stop_dev_server_for_smoke() {
+    if [[ -n "$DEV_SERVER_PID" ]] && kill -0 "$DEV_SERVER_PID" >/dev/null 2>&1; then
+        kill "$DEV_SERVER_PID" >/dev/null 2>&1 || true
+        wait "$DEV_SERVER_PID" >/dev/null 2>&1 || true
+    fi
+    DEV_SERVER_PID=""
+}
+
+run_local_smoke_subsection() {
+    local smoke_context_json
+    local smoke_admin_key
+    local smoke_quiz_id
+    local smoke_supabase_url
+    local smoke_service_role_key
+
+    log "Running staging-style smoke subsection on local dirty DB"
+    SMOKE_RUN_TAG="smoke-local-$(date +%Y%m%d-%H%M%S)-$RANDOM"
+
+    smoke_context_json="$(SMOKE_RUN_TAG="$SMOKE_RUN_TAG" npx tsx ./scripts/bootstrap-smoke-quiz.ts)"
+
+    smoke_admin_key="$(node -e "const v = JSON.parse(process.argv[1]); process.stdout.write(v.adminKey);" "$smoke_context_json")"
+    smoke_quiz_id="$(node -e "const v = JSON.parse(process.argv[1]); process.stdout.write(v.quizId);" "$smoke_context_json")"
+    smoke_supabase_url="$(node -e "const v = JSON.parse(process.argv[1]); process.stdout.write(v.supabaseUrl);" "$smoke_context_json")"
+    smoke_service_role_key="$(node -e "const v = JSON.parse(process.argv[1]); process.stdout.write(v.supabaseServiceRoleKey);" "$smoke_context_json")"
+
+    if [[ -z "$smoke_admin_key" || -z "$smoke_quiz_id" || -z "$smoke_supabase_url" || -z "$smoke_service_role_key" ]]; then
+        echo "Failed to bootstrap smoke quiz context." >&2
+        return 1
+    fi
+
+    start_dev_server_for_smoke
+
+    SMOKE_BASE_URL="$SMOKE_BASE_URL" \
+    SMOKE_ADMIN_KEY="$smoke_admin_key" \
+    SMOKE_SUPABASE_URL="$smoke_supabase_url" \
+    SMOKE_SUPABASE_SERVICE_ROLE_KEY="$smoke_service_role_key" \
+    SMOKE_RUN_TAG="$SMOKE_RUN_TAG" \
+    SMOKE_QUIZ_ID="$smoke_quiz_id" \
+    SMOKE_CLEANUP_OWNED_QUIZ="1" \
+    bash -lc "$SMOKE_CMD"
+
+    log "Smoke subsection completed with DB integrity assertions"
+}
+
 restore_backup() {
     if [[ "$BACKUP_CREATED" -ne 1 || -z "$BACKUP_FILE" || ! -f "$BACKUP_FILE" ]]; then
         return 0
@@ -81,6 +169,8 @@ on_exit() {
     local final_code="$exit_code"
 
     set +e
+
+    stop_dev_server_for_smoke
 
     restore_backup
     local restore_code=$?
@@ -137,11 +227,20 @@ trap 'on_exit $?' EXIT
 require_command npm
 require_command npx
 require_command docker
+require_command curl
 
 if ! is_db_ready; then
     log "Starting local Supabase stack"
     npm run supabase:start >/dev/null
     STARTED_BY_SCRIPT=1
+fi
+
+SUPABASE_URL="$(read_dev_var SUPABASE_URL)"
+SUPABASE_SERVICE_ROLE_KEY="$(read_dev_var SUPABASE_SERVICE_ROLE_KEY)"
+
+if [[ -z "$SUPABASE_URL" || -z "$SUPABASE_SERVICE_ROLE_KEY" ]]; then
+    echo "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in environment or .dev.vars for smoke subsection." >&2
+    exit 1
 fi
 
 if ! is_db_ready; then
@@ -173,3 +272,5 @@ log "Running test command: ${TEST_CMD}"
 bash -lc "$TEST_CMD"
 
 log "Test command finished successfully"
+
+run_local_smoke_subsection

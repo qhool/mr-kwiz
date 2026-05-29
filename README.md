@@ -98,13 +98,39 @@ MrKwiz
    - uses the Supabase local Postgres container binaries for dump/restore (not your system `pg_dump`),
    - creates a backup of your current local Supabase DB,
    - runs `supabase db reset` for a clean test state,
-   - runs tests,
+   - runs main tests,
+   - runs a staging-style API smoke subsection against the local dirty DB,
+   - asserts at the end of smoke that DB health is unchanged (no smoke residue),
    - restores your original local DB snapshot after tests (even on failure).
+
+   Notes:
+   - The local smoke subsection starts the app server on `http://127.0.0.1:4173` during the run.
+   - `.dev.vars` must define `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
 
    Keep the backup dump after restore if needed:
    ```bash
    npm run test:db:safe:keep-backup
    ```
+
+6.2 **Run staging API smoke tests against a dirty DB**:
+   ```bash
+   SMOKE_BASE_URL="https://<your-staging-host>" \
+   SMOKE_ADMIN_KEY="<admin-capability-token>" \
+   SMOKE_SUPABASE_URL="https://<project-ref>.supabase.co" \
+   SMOKE_SUPABASE_SERVICE_ROLE_KEY="<service-role-key>" \
+   npm run test:smoke:api:staging
+   ```
+
+   This suite:
+   - creates run-tagged smoke data through deployed API endpoints,
+   - exercises invitation -> pickup -> answer -> submit -> view-key -> view-result paths,
+   - cleans up only records created by that run (no global reset).
+
+   Required environment variables:
+   - `SMOKE_BASE_URL`: Deployed origin to test (staging/preview).
+   - `SMOKE_ADMIN_KEY`: Admin capability token for the target quiz.
+   - `SMOKE_SUPABASE_URL`: Supabase URL for targeted cleanup queries.
+   - `SMOKE_SUPABASE_SERVICE_ROLE_KEY`: Service role key used only for cleanup.
 
 7. **Run the Development Server**: 
    ```bash
