@@ -43,6 +43,8 @@ MrKwiz
 
 ## Setup Instructions
 
+Deployment runbook: `docs/deployment-runbook.html`
+
 1. **Clone the Repository**: 
    ```bash
    git clone <repository-url>

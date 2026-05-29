@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MrKwiz Deployment Runbook</title>
+  <style>
+    :root {
+      --bg: #f5f1e8;
+      --panel: #fffdf8;
+      --panel-alt: #f0e8d8;
+      --text: #1f2430;
+      --muted: #596172;
+      --accent: #0f6c5c;
+      --accent-strong: #09493f;
+      --warn: #9a4d1a;
+      --border: #d9ceb8;
+      --shadow: 0 18px 40px rgba(31, 36, 48, 0.08);
+      --radius: 18px;
+      --mono: "IBM Plex Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: var(--sans);
+      color: var(--text);
+      background:
+        radial-gradient(circle at top right, rgba(15, 108, 92, 0.14), transparent 28%),
+        radial-gradient(circle at bottom left, rgba(154, 77, 26, 0.12), transparent 30%),
+        var(--bg);
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(1100px, calc(100vw - 32px));
+      margin: 32px auto 64px;
+    }
+
+    .hero,
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      padding: 32px;
+      margin-bottom: 24px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -80px -80px auto;
+      width: 220px;
+      height: 220px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, rgba(15, 108, 92, 0.22), rgba(15, 108, 92, 0));
+      pointer-events: none;
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin: 0 0 12px;
+      line-height: 1.15;
+    }
+
+    h1 {
+      font-size: clamp(2rem, 4vw, 3.2rem);
+      max-width: 12ch;
+    }
+
+    h2 {
+      font-size: 1.45rem;
+      margin-bottom: 16px;
+    }
+
+    h3 {
+      font-size: 1rem;
+      margin-bottom: 10px;
+    }
+
+    p {
+      margin: 0 0 12px;
+      color: var(--text);
+    }
+
+    .lead {
+      font-size: 1.05rem;
+      max-width: 70ch;
+    }
+
+    .eyebrow,
+    .tag,
+    .pill {
+      display: inline-block;
+      border-radius: 999px;
+      font-weight: 700;
+      letter-spacing: 0.03em;
+    }
+
+    .eyebrow {
+      margin-bottom: 14px;
+      padding: 6px 10px;
+      background: var(--panel-alt);
+      color: var(--accent-strong);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+    }
+
+    .pill {
+      padding: 4px 10px;
+      font-size: 0.76rem;
+      background: rgba(15, 108, 92, 0.1);
+      color: var(--accent-strong);
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+
+    .tag {
+      padding: 4px 8px;
+      font-size: 0.72rem;
+      background: rgba(154, 77, 26, 0.12);
+      color: var(--warn);
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.two {
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    }
+
+    .grid.three {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    section {
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      padding: 18px;
+      background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(240, 232, 216, 0.72));
+      border: 1px solid var(--border);
+      border-radius: 14px;
+    }
+
+    .decision {
+      border-left: 5px solid var(--accent);
+      padding: 16px 18px;
+      background: rgba(15, 108, 92, 0.06);
+      border-radius: 14px;
+      margin-top: 18px;
+    }
+
+    .warning {
+      border-left: 5px solid var(--warn);
+      padding: 16px 18px;
+      background: rgba(154, 77, 26, 0.08);
+      border-radius: 14px;
+    }
+
+    ul,
+    ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li + li {
+      margin-top: 8px;
+    }
+
+    code,
+    pre {
+      font-family: var(--mono);
+      font-size: 0.94rem;
+    }
+
+    code {
+      background: rgba(15, 108, 92, 0.08);
+      padding: 0.15em 0.35em;
+      border-radius: 6px;
+    }
+
+    pre {
+      margin: 14px 0 0;
+      padding: 16px;
+      overflow-x: auto;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+      background: #1e241f;
+      color: #f6f3eb;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.96rem;
+    }
+
+    th,
+    td {
+      text-align: left;
+      vertical-align: top;
+      padding: 12px 10px;
+      border-top: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--accent-strong);
+      font-size: 0.84rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    a {
+      color: var(--accent-strong);
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .small {
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 640px) {
+      main {
+        width: min(100vw - 20px, 1100px);
+        margin: 12px auto 36px;
+      }
+
+      .hero,
+      section {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <div class="eyebrow">MrKwiz deployment plan</div>
+      <h1>Deploy one codebase to Cloudflare and Supabase without paying for extra environments yet.</h1>
+      <p class="lead">This repo is already shaped for a Cloudflare Worker with static assets and edge API handlers, backed by Supabase. The cheapest stable deployment setup is two remote environments only: <code>stage</code> to staging and <code>prod</code> to production. Feature branches should run CI, but not auto-deploy to a live database.</p>
+      <div>
+        <span class="pill">Cloudflare Worker + static assets</span>
+        <span class="pill">Supabase staging + prod</span>
+        <span class="pill">GitHub Actions as deploy orchestrator</span>
+      </div>
+      <div class="decision">
+        <strong>Decision:</strong> use GitHub Actions as the single deployment control plane, not a split setup where Cloudflare auto-builds from Git while Supabase migrations run elsewhere. One system should run tests, apply migrations, deploy the Worker, and then run smoke tests in sequence.
+      </div>
+    </section>
+
+    <section>
+      <h2>Recommended Shape</h2>
+      <div class="grid three">
+        <article class="card">
+          <h3>Local + feature branches</h3>
+          <p>Develop against the local Supabase stack. Feature branches run tests only. Do not attach feature branches to a shared hosted database on the free plan.</p>
+        </article>
+        <article class="card">
+          <h3><code>stage</code> branch</h3>
+          <p>Deploy to a hosted staging Supabase project and a staging Cloudflare Worker such as <code>mrkwiz-staging</code>.</p>
+        </article>
+        <article class="card">
+          <h3><code>prod</code> branch</h3>
+          <p>Deploy to the production Supabase project and a production Cloudflare Worker such as <code>mrkwiz</code>.</p>
+        </article>
+      </div>
+      <div class="warning" style="margin-top: 16px;">
+        <strong>Why not preview deployments for every PR?</strong> Supabase free tier does not include branching, only allows two active projects, and pauses inactive projects after one week. That makes branch-per-PR databases unreliable and unsafe. Keep previews to CI results only, or static-only previews with no live writes.
+      </div>
+    </section>
+
+    <section>
+      <h2>Control Panels You Will Use</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>System</th>
+            <th>Link</th>
+            <th>What you do there</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>GitHub repo</td>
+            <td><a href="https://github.com/qhool/mr-kwiz">github.com/qhool/mr-kwiz</a></td>
+            <td>Pull requests, merge flow, branch protections, workflow status.</td>
+          </tr>
+          <tr>
+            <td>GitHub Actions</td>
+            <td><a href="https://github.com/qhool/mr-kwiz/actions">github.com/qhool/mr-kwiz/actions</a></td>
+            <td>Watch CI, staging deploys, production deploys, and rerun failed jobs.</td>
+          </tr>
+          <tr>
+            <td>GitHub Actions secrets</td>
+            <td><a href="https://github.com/qhool/mr-kwiz/settings/secrets/actions">github.com/qhool/mr-kwiz/settings/secrets/actions</a></td>
+            <td>Store shared credentials like Cloudflare and Supabase CLI tokens.</td>
+          </tr>
+          <tr>
+            <td>GitHub environments</td>
+            <td><a href="https://github.com/qhool/mr-kwiz/settings/environments">github.com/qhool/mr-kwiz/settings/environments</a></td>
+            <td>Create <code>staging</code> and <code>production</code> environment-scoped secrets and approvals.</td>
+          </tr>
+          <tr>
+            <td>GitHub branch rules</td>
+            <td><a href="https://github.com/qhool/mr-kwiz/settings/branches">github.com/qhool/mr-kwiz/settings/branches</a></td>
+            <td>Require PRs and passing checks before merging to <code>stage</code> or <code>prod</code>.</td>
+          </tr>
+          <tr>
+            <td>Supabase dashboard</td>
+            <td><a href="https://supabase.com/dashboard">supabase.com/dashboard</a></td>
+            <td>Create the staging and production projects, inspect logs, SQL editor, auth, and table data.</td>
+          </tr>
+          <tr>
+            <td>Supabase new project</td>
+            <td><a href="https://supabase.com/dashboard/new?plan=free">supabase.com/dashboard/new?plan=free</a></td>
+            <td>Create the two hosted projects you will use on the free plan.</td>
+          </tr>
+          <tr>
+            <td>Cloudflare dashboard</td>
+            <td><a href="https://dash.cloudflare.com/">dash.cloudflare.com</a></td>
+            <td>Manage Workers, domains, DNS, secrets, logs, and metrics.</td>
+          </tr>
+          <tr>
+            <td>Cloudflare Workers &amp; Pages</td>
+            <td><a href="https://dash.cloudflare.com/?to=/:account/workers-and-pages">dash.cloudflare.com/?to=/:account/workers-and-pages</a></td>
+            <td>Create the staging and production Worker deployments, inspect traffic and errors.</td>
+          </tr>
+          <tr>
+            <td>Cloudflare API tokens</td>
+            <td><a href="https://dash.cloudflare.com/?to=/:account/api-tokens">dash.cloudflare.com/?to=/:account/api-tokens</a></td>
+            <td>Create the scoped API token used by Wrangler in GitHub Actions.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Initial Deploy</h2>
+      <ol>
+        <li>
+          <strong>Create the branch model.</strong> Add long-lived <code>stage</code> and <code>prod</code> branches if you do not already use them. Protect both. Require pull requests and passing checks on both.
+        </li>
+        <li>
+          <strong>Create two Supabase projects.</strong> Make one staging project and one production project. Free tier allows only two active projects, so those are your whole hosted fleet.
+        </li>
+        <li>
+          <strong>Create the first remote schema from code, not from dashboard clicks.</strong> Keep <code>supabase/migrations</code> as the source of truth. If you already changed a hosted project manually, pull that state into migrations before you automate deployments.
+        </li>
+        <li>
+          <strong>Create two Cloudflare Worker targets.</strong> This repo already uses <code>wrangler.toml</code> with static assets from <code>dist</code>. Extend that config with separate <code>[env.staging]</code> and <code>[env.production]</code> blocks so the same code deploys to two Worker names and, later, two custom domains.
+        </li>
+        <li>
+          <strong>Create GitHub environments.</strong> Add <code>staging</code> and <code>production</code> in GitHub, then store environment-specific secrets with the same names in both places.
+        </li>
+      </ol>
+
+      <div class="grid two" style="margin-top: 18px;">
+        <article class="card">
+          <h3>Repository-level secrets</h3>
+          <p class="small muted">Shared by all deploy jobs.</p>
+          <pre><code>CLOUDFLARE_ACCOUNT_ID
+CLOUDFLARE_API_TOKEN
+SUPABASE_ACCESS_TOKEN</code></pre>
+        </article>
+        <article class="card">
+          <h3>Environment-level secrets</h3>
+          <p class="small muted">Set these separately in GitHub environments <code>staging</code> and <code>production</code>.</p>
+          <pre><code>SUPABASE_PROJECT_ID
+SUPABASE_DB_PASSWORD
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+APP_TOKEN_SECRET
+SMOKE_ADMIN_KEY</code></pre>
+        </article>
+      </div>
+
+      <p style="margin-top: 16px;">Those environment secrets match the runtime and test surfaces already present in the repo. The Worker itself needs <code>SUPABASE_URL</code>, <code>SUPABASE_SERVICE_ROLE_KEY</code>, and <code>APP_TOKEN_SECRET</code>. Your staging smoke suite also needs a stable <code>SMOKE_ADMIN_KEY</code>.</p>
+
+      <h3 style="margin-top: 18px;">Recommended workflow set</h3>
+      <div class="grid three">
+        <article class="card">
+          <h3><code>ci.yml</code></h3>
+          <p>Run on pull requests. Install, build, run unit tests, function tests, and any cheap static validation. No remote deploy.</p>
+        </article>
+        <article class="card">
+          <h3><code>deploy-staging.yml</code></h3>
+          <p>Run on push to <code>stage</code>. Apply Supabase migrations to staging, deploy the Worker to Cloudflare staging, then run the deployed smoke suite.</p>
+        </article>
+        <article class="card">
+          <h3><code>deploy-production.yml</code></h3>
+          <p>Run on push to <code>prod</code>. Require GitHub Environment approval for <code>production</code>. Apply migrations, deploy production Worker, then verify the deployed homepage responds cleanly.</p>
+        </article>
+      </div>
+
+      <pre><code>feature/* -> pull request -> ci only
+    stage     -> auto deploy staging -> run staging smoke tests
+    prod      -> manual approval -> auto deploy production</code></pre>
+    </section>
+
+    <section>
+      <h2>Subsequent Deploys</h2>
+      <ol>
+        <li>
+          Build features on a short-lived branch against local Supabase.
+        </li>
+        <li>
+          If the change affects schema, create or update a migration in <code>supabase/migrations</code> and verify locally with <code>npm run supabase:db:reset</code> or the safer local DB test harness already in the repo.
+        </li>
+        <li>
+          Open a pull request into <code>stage</code>. CI must pass before merge.
+        </li>
+        <li>
+          Merging to <code>stage</code> should be enough to trigger staging deployment automatically. That job should run in this order: tests already green, <code>supabase db push</code> to staging, <code>wrangler deploy --env staging</code>, then <code>npm run test:smoke:api:staging</code> against the deployed URL.
+        </li>
+        <li>
+          After staging looks good, open a PR from <code>stage</code> to <code>prod</code>.
+        </li>
+        <li>
+          Merge to <code>prod</code>. GitHub should require production approval, then run the production deployment automatically and finish with a narrow live probe.
+        </li>
+      </ol>
+
+      <div class="decision" style="margin-top: 18px;">
+        <strong>What pushing to a branch should mean here:</strong> pushing to a feature branch only buys you feedback, pushing to <code>stage</code> buys you a staging release, and pushing to <code>prod</code> buys you a production release. That is the safest approximation of "just push and let CI/CD handle it" while staying inside free-tier limits.
+      </div>
+    </section>
+
+    <section>
+      <h2>Limits You Are Likely To Hit First</h2>
+      <div class="grid two">
+        <article class="card">
+          <h3>Supabase free tier</h3>
+          <ul>
+            <li>Only <strong>2 active projects</strong>. That is why the plan uses staging and production only.</li>
+            <li><strong>500 MB database size</strong>. Quiz snapshots, responses, and answer history can grow faster than expected if you retain every iteration forever.</li>
+            <li><strong>5 GB egress</strong> and <strong>1 GB file storage</strong>. This app looks light now, but chart-heavy usage or uploaded media would make this matter.</li>
+            <li><strong>No backups</strong> and <strong>no branching</strong>. Treat migrations and exports as your safety net.</li>
+            <li>Projects are <strong>paused after 1 week of inactivity</strong>. Staging can wake slowly or surprise you after idle periods.</li>
+            <li><strong>1 day log retention</strong>. Investigate incidents quickly or you lose the easy trail.</li>
+          </ul>
+        </article>
+        <article class="card">
+          <h3>Cloudflare free tier</h3>
+          <ul>
+            <li><strong>100,000 Worker requests per day</strong> across the account. Staging traffic, production traffic, and smoke tests all count.</li>
+            <li><strong>10 ms CPU time per request</strong>. Network wait time does not count, but heavy parsing or large in-memory transforms can trip this.</li>
+            <li><strong>128 MB memory</strong> per isolate and <strong>50 subrequests per invocation</strong>. You are well within that now, but it matters if one request fans out.</li>
+            <li><strong>64 environment variables per Worker</strong>. Fine for this app, but avoid secret sprawl.</li>
+            <li><strong>20,000 static asset files per Worker version</strong>. Vite output is nowhere near this today.</li>
+          </ul>
+        </article>
+      </div>
+      <p style="margin-top: 16px;" class="muted">The first practical upgrade trigger is usually Supabase, not Cloudflare: needing backups, wanting preview databases, or outgrowing the two-project ceiling.</p>
+    </section>
+
+    <section>
+      <h2>One-Time Implementation Checklist</h2>
+      <ul>
+        <li>Add <code>stage</code> as the staging branch.</li>
+        <li>Add <code>[env.staging]</code> and <code>[env.production]</code> to <code>wrangler.toml</code>.</li>
+        <li>Create staging and production Supabase projects.</li>
+        <li>Create GitHub environments and secrets.</li>
+        <li>Add the three GitHub Actions workflows. This repo now includes <code>ci.yml</code>, <code>deploy-staging.yml</code>, and <code>deploy-production.yml</code>.</li>
+        <li>Seed or bootstrap one quiz in staging so deployed smoke tests have an admin key to exercise.</li>
+        <li>Protect <code>stage</code> and <code>prod</code> with required checks.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>
