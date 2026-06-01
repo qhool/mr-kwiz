@@ -75,9 +75,13 @@ const createSmokeSupabase = () => {
     });
 };
 
-const assertNoError = (step: string, error: { message: string } | null) => {
+const assertNoError = (
+    step: string,
+    error: { message: string; details?: string | null; hint?: string | null; code?: string } | null
+) => {
     if (error) {
-        throw new Error(`${step}: ${error.message}`);
+        const parts = [error.message, error.details, error.code].filter(Boolean).join(' | ');
+        throw new Error(`${step}: ${parts || '(unknown error)'}`);
     }
 };
 
@@ -142,15 +146,16 @@ const assertDbNotMessedUp = async () => {
 
 const assertNoStaleRunTagRows = async () => {
     const supabase = createSmokeSupabase();
-    const { count, error } = await supabase
+    const { data, error } = await supabase
         .from('quiz_invitations')
-        .select('id', { count: 'exact', head: true })
+        .select('id')
         .or(`label.ilike.%${cfg.runTag}%,description.ilike.%${cfg.runTag}%`)
         .is('deleted_at', null);
 
     assertNoError('preflight stale run-tag check', error);
-    if ((count ?? 0) > 0) {
-        throw new Error(`Run tag collision detected for ${cfg.runTag}; found ${(count ?? 0)} active invitations.`);
+    const count = data?.length ?? 0;
+    if (count > 0) {
+        throw new Error(`Run tag collision detected for ${cfg.runTag}; found ${count} active invitations.`);
     }
 };
 
