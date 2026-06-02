@@ -99,10 +99,24 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
+      - name: Bootstrap staging smoke quiz
+        id: bootstrap
+        env:
+          APP_TOKEN_SECRET: ${{ secrets.APP_TOKEN_SECRET }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          output=$(npx tsx scripts/bootstrap-smoke-quiz.ts)
+          echo "admin-key=$(echo "$output" | jq -r '.adminKey')" >> "$GITHUB_OUTPUT"
+          echo "quiz-id=$(echo "$output" | jq -r '.quizId')" >> "$GITHUB_OUTPUT"
+
       - name: Run deployed staging smoke tests
         env:
-          SMOKE_ADMIN_KEY: ${{ secrets.SMOKE_ADMIN_KEY }}
+          SMOKE_ADMIN_KEY: ${{ steps.bootstrap.outputs.admin-key }}
           SMOKE_BASE_URL: ${{ steps.deploy.outputs.deployment-url }}
+          SMOKE_CLEANUP_OWNED_QUIZ: "1"
+          SMOKE_QUIZ_ID: ${{ steps.bootstrap.outputs.quiz-id }}
           SMOKE_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SMOKE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: npm run test:smoke:api:staging
