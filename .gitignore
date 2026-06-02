@@ -19,6 +19,9 @@ tmp/
 .dev.vars.*
 !.dev.vars.example
 
+# Script environment config (contains secrets)
+.script-envs.toml
+
 # Environment files
 .env
 .env.*

@@ -1,0 +1,17 @@
+# Script environment config for local tooling (create-admin-quiz, etc.)
+# Copy this file to .script-envs.toml and fill in real values.
+# .script-envs.toml is gitignored — never commit secrets.
+#
+# Usage: npx tsx scripts/create-admin-quiz.ts --env local --title "My Quiz"
+
+[local]
+APP_TOKEN_SECRET = "your-local-app-token-secret"
+SUPABASE_URL = "http://127.0.0.1:54321"
+SUPABASE_SERVICE_ROLE_KEY = "your-local-service-role-key"
+BASE_URL = "http://localhost:3000"
+
+[staging]
+APP_TOKEN_SECRET = "your-staging-app-token-secret"
+SUPABASE_URL = "https://your-project.supabase.co"
+SUPABASE_SERVICE_ROLE_KEY = "your-staging-service-role-key"
+BASE_URL = "https://mrkwiz-staging.your-account.workers.dev"
