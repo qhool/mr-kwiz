@@ -5,24 +5,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { cloudflare } from '@cloudflare/vite-plugin';
 
-import { handleAdminEditGet, handleAdminEditPost } from './functions/api/admin/handle-edit';
-import {
-  handleAdminInvitationDeactivatePost,
-  handleAdminInvitationPatch,
-  handleAdminInvitationsGet,
-  handleAdminInvitationsPost,
-} from './functions/api/admin/handle-invitations';
-import {
-  handleRespondentAnswerPost,
-  handleRespondentInvitationGet,
-  handleRespondentInvitationPickupPost,
-  handleRespondentSessionGet,
-  handleRespondentViewKeyDeactivatePost,
-  handleRespondentViewKeyPost,
-  handleRespondentViewKeyPatch,
-  handleRespondentViewKeysGet,
-  handleViewKeyGet,
-} from './functions/api/respondent/handle-respondent';
+import { routeApiRequest } from './src/worker';
 
 const readDevVars = () => {
   const devVarsPath = path.resolve(process.cwd(), '.dev.vars');
@@ -60,43 +43,23 @@ const writeNodeResponse = async (
   nodeResponse.end(body);
 };
 
-const adminEditPattern = /^\/api\/admin\/([^/]+)\/edit\/?$/;
-const adminInvitationsPattern = /^\/api\/admin\/([^/]+)\/invitations\/?$/;
-const adminInvitationDetailPattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/?$/;
-const adminInvitationDeactivatePattern = /^\/api\/admin\/([^/]+)\/invitations\/([^/]+)\/deactivate\/?$/;
-const respondentInvitationPattern = /^\/api\/respondent\/invite\/([^/]+)\/?$/;
-const respondentInvitationPickupPattern = /^\/api\/respondent\/invite\/([^/]+)\/pickup\/?$/;
-const respondentResponsePattern = /^\/api\/respondent\/response\/([^/]+)\/?$/;
-const respondentAnswerPattern = /^\/api\/respondent\/response\/([^/]+)\/answer\/?$/;
-const respondentViewKeysPattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/?$/;
-const respondentViewKeyDetailPattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/([^/]+)\/?$/;
-const respondentViewKeyDeactivatePattern = /^\/api\/respondent\/response\/([^/]+)\/view-keys\/([^/]+)\/deactivate\/?$/;
-const respondentViewKeyPattern = /^\/api\/view\/([^/]+)\/?$/;
-
-const readRequestBody = async (req: import('node:http').IncomingMessage): Promise<Buffer> => {
+const buildNodeRequest = async (req: import('node:http').IncomingMessage, url: URL) => {
   const chunks: Buffer[] = [];
-
   await new Promise<void>((resolve, reject) => {
-    req.on('data', (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
+    req.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
     req.on('end', () => resolve());
     req.on('error', reject);
   });
 
-  return Buffer.concat(chunks);
-};
-
-const buildNodeRequest = async (req: import('node:http').IncomingMessage, url: URL, method: string) => {
-  const body = await readRequestBody(req);
+  const body = Buffer.concat(chunks);
 
   return new Request(url.toString(), {
-    method,
+    method: req.method ?? 'GET',
     headers: new Headers(
       Object.entries(req.headers)
         .filter((entry): entry is [string, string] => typeof entry[1] === 'string')
     ),
-    body,
+    body: body.length > 0 ? body : undefined,
   });
 };
 
@@ -105,151 +68,21 @@ export default defineConfig({
     react(),
     cloudflare(),
     {
-      name: 'local-admin-api-middleware',
+      name: 'local-api-middleware',
       configureServer(server) {
         server.middlewares.use(async (req, res, next) => {
           const requestHost = req.headers.host ?? 'localhost:3000';
           const url = req.url ? new URL(req.url, `http://${requestHost}`) : null;
-          const deactivateMatch = url?.pathname.match(adminInvitationDeactivatePattern);
-          const invitationDetailMatch = url?.pathname.match(adminInvitationDetailPattern);
-          const invitationsMatch = url?.pathname.match(adminInvitationsPattern);
-          const editMatch = url?.pathname.match(adminEditPattern);
-          const respondentInvitationPickupMatch = url?.pathname.match(respondentInvitationPickupPattern);
-          const respondentInvitationMatch = url?.pathname.match(respondentInvitationPattern);
-          const respondentAnswerMatch = url?.pathname.match(respondentAnswerPattern);
-          const respondentViewKeysMatch = url?.pathname.match(respondentViewKeysPattern);
-          const respondentViewKeyDetailMatch = url?.pathname.match(respondentViewKeyDetailPattern);
-          const respondentViewKeyDeactivateMatch = url?.pathname.match(respondentViewKeyDeactivatePattern);
-          const respondentViewKeyMatch = url?.pathname.match(respondentViewKeyPattern);
-          const respondentResponseMatch = url?.pathname.match(respondentResponsePattern);
 
           if (!url) {
             next();
             return;
           }
 
-          const env = readDevVars();
+          const request = await buildNodeRequest(req, url);
+          const response = await routeApiRequest(request, readDevVars());
 
-          if (respondentInvitationPickupMatch && req.method === 'POST') {
-            const invitationKey = decodeURIComponent(respondentInvitationPickupMatch[1]);
-            const request = await buildNodeRequest(req, url, 'POST');
-            const response = await handleRespondentInvitationPickupPost(env, invitationKey, request);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentInvitationMatch && req.method === 'GET') {
-            const invitationKey = decodeURIComponent(respondentInvitationMatch[1]);
-            const response = await handleRespondentInvitationGet(env, invitationKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentAnswerMatch && req.method === 'POST') {
-            const responseKey = decodeURIComponent(respondentAnswerMatch[1]);
-            const request = await buildNodeRequest(req, url, 'POST');
-            const response = await handleRespondentAnswerPost(env, responseKey, request);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentViewKeysMatch && req.method === 'POST') {
-            const responseKey = decodeURIComponent(respondentViewKeysMatch[1]);
-            const request = await buildNodeRequest(req, url, 'POST');
-            const response = await handleRespondentViewKeyPost(env, responseKey, request);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentViewKeysMatch && req.method === 'GET') {
-            const responseKey = decodeURIComponent(respondentViewKeysMatch[1]);
-            const response = await handleRespondentViewKeysGet(env, responseKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentViewKeyDetailMatch && req.method === 'PATCH') {
-            const responseKey = decodeURIComponent(respondentViewKeyDetailMatch[1]);
-            const viewKey = decodeURIComponent(respondentViewKeyDetailMatch[2]);
-            const request = await buildNodeRequest(req, url, 'PATCH');
-            const response = await handleRespondentViewKeyPatch(env, responseKey, viewKey, request);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentViewKeyDeactivateMatch && req.method === 'POST') {
-            const responseKey = decodeURIComponent(respondentViewKeyDeactivateMatch[1]);
-            const viewKey = decodeURIComponent(respondentViewKeyDeactivateMatch[2]);
-            const response = await handleRespondentViewKeyDeactivatePost(env, responseKey, viewKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentViewKeyMatch && req.method === 'GET') {
-            const viewKey = decodeURIComponent(respondentViewKeyMatch[1]);
-            const response = await handleViewKeyGet(env, viewKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (respondentResponseMatch && req.method === 'GET') {
-            const responseKey = decodeURIComponent(respondentResponseMatch[1]);
-            const response = await handleRespondentSessionGet(env, responseKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (deactivateMatch && req.method === 'POST') {
-            const adminKey = decodeURIComponent(deactivateMatch[1]);
-            const invitationId = decodeURIComponent(deactivateMatch[2]);
-            const response = await handleAdminInvitationDeactivatePost(env, adminKey, invitationId);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (invitationDetailMatch && req.method === 'PATCH') {
-            const adminKey = decodeURIComponent(invitationDetailMatch[1]);
-            const invitationId = decodeURIComponent(invitationDetailMatch[2]);
-            const request = await buildNodeRequest(req, url, 'PATCH');
-            const response = await handleAdminInvitationPatch(env, adminKey, invitationId, request);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (invitationsMatch) {
-            const adminKey = decodeURIComponent(invitationsMatch[1]);
-
-            if (req.method === 'GET') {
-              const response = await handleAdminInvitationsGet(env, adminKey);
-              await writeNodeResponse(res, response);
-              return;
-            }
-
-            if (req.method === 'POST') {
-              const request = await buildNodeRequest(req, url, 'POST');
-              const response = await handleAdminInvitationsPost(env, adminKey, request);
-              await writeNodeResponse(res, response);
-              return;
-            }
-          }
-
-          if (!editMatch) {
-            next();
-            return;
-          }
-
-          const adminKey = decodeURIComponent(editMatch[1]);
-
-          if (req.method === 'GET') {
-            const response = await handleAdminEditGet(env, adminKey);
-            await writeNodeResponse(res, response);
-            return;
-          }
-
-          if (req.method === 'POST') {
-            const request = await buildNodeRequest(req, url, 'POST');
-
-            const response = await handleAdminEditPost(env, adminKey, request);
+          if (response) {
             await writeNodeResponse(res, response);
             return;
           }
