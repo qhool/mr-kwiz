@@ -127,38 +127,75 @@ EOF
         # Fall back to parsing 'supabase status' (CI path after 'supabase start').
         log "No .dev.vars found — generating from local Supabase status"
 
-        status_output=""
-        status_exit=0
-        status_output="$(npx supabase status 2>&1)" || status_exit=$?
+        status_env_output=""
+        status_env_exit=0
+        status_env_output="$(npx supabase status -o env 2>&1)" || status_env_exit=$?
 
-        if [[ "$status_exit" -ne 0 ]]; then
-            echo "ERROR: 'supabase status' failed (exit code ${status_exit})." >&2
-            echo "Output was:" >&2
-            echo "$status_output" >&2
-            echo "" >&2
-            echo "Hint: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as environment variables," >&2
-            echo "      or create .dev.vars before running this script." >&2
-            exit 1
+        local_api_url=""
+        local_service_role_key=""
+
+        if [[ "$status_env_exit" -eq 0 ]]; then
+            local_api_url="$(
+                echo "$status_env_output" \
+                | grep -E '^API_URL=' \
+                | sed -E 's/^API_URL="?([^"[:space:]]+)"?$/\1/' \
+                | head -n1
+            )"
+
+            local_service_role_key="$(
+                echo "$status_env_output" \
+                | grep -E '^SERVICE_ROLE_KEY=' \
+                | sed -E 's/^SERVICE_ROLE_KEY="?([^"[:space:]]+)"?$/\1/' \
+                | head -n1
+            )"
         fi
 
-        local_api_url="$(
-            echo "$status_output" \
-            | grep -E '^\s+API URL:' \
-            | sed 's/.*API URL:[[:space:]]*//' \
-            | tr -d '[:space:]'
-        )"
+        # Backward-compatible fallback for older/special CLI output modes.
+        if [[ -z "$local_api_url" || -z "$local_service_role_key" ]]; then
+            status_text_output=""
+            status_text_exit=0
+            status_text_output="$(npx supabase status 2>&1)" || status_text_exit=$?
 
-        local_service_role_key="$(
-            echo "$status_output" \
-            | grep -E '^\s+service_role key:' \
-            | sed 's/.*service_role key:[[:space:]]*//' \
-            | tr -d '[:space:]'
-        )"
+            if [[ "$status_text_exit" -ne 0 ]]; then
+                echo "ERROR: 'supabase status' failed (env:${status_env_exit}, text:${status_text_exit})." >&2
+                echo "Env output was:" >&2
+                echo "$status_env_output" >&2
+                echo "" >&2
+                echo "Text output was:" >&2
+                echo "$status_text_output" >&2
+                echo "" >&2
+                echo "Hint: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY as environment variables," >&2
+                echo "      or create .dev.vars before running this script." >&2
+                exit 1
+            fi
+
+            if [[ -z "$local_api_url" ]]; then
+                local_api_url="$(
+                    echo "$status_text_output" \
+                    | grep -E 'API URL:|Project URL' \
+                    | grep -oE 'https?://[^[:space:]]+' \
+                    | head -n1
+                )"
+            fi
+
+            if [[ -z "$local_service_role_key" ]]; then
+                local_service_role_key="$(
+                    echo "$status_text_output" \
+                    | grep -E 'service_role key:' \
+                    | sed -E 's/.*service_role key:[[:space:]]*//' \
+                    | tr -d '[:space:]' \
+                    | head -n1
+                )"
+            fi
+        fi
 
         if [[ -z "$local_api_url" || -z "$local_service_role_key" ]]; then
             echo "ERROR: Could not parse local Supabase credentials from 'supabase status'." >&2
-            echo "Output was:" >&2
-            echo "$status_output" >&2
+            echo "Env output was:" >&2
+            echo "$status_env_output" >&2
+            echo "" >&2
+            echo "Parsed API URL: ${local_api_url:-<empty>}" >&2
+            echo "Parsed SERVICE_ROLE_KEY length: ${#local_service_role_key}" >&2
             exit 1
         fi
 
