@@ -29,8 +29,8 @@ describe('buildAdminQuestionEditPrompt', () => {
 });
 
 describe('renderAdminSkillPrompt', () => {
-    it('renders a stable skill prompt with trait, question, and adaptive configuration context', () => {
-        const prompt = renderAdminSkillPrompt(testDefinition, {
+    it('renders a stable skill prompt with trait, question, and adaptive configuration context', async () => {
+        const prompt = await renderAdminSkillPrompt(testDefinition, {
             current_definition_version: 12,
             description: testDefinition.description,
             id: 'quiz-123',

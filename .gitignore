@@ -22,6 +22,9 @@ tmp/
 # Script environment config (contains secrets)
 .script-envs.toml
 
+# Generated schema reference (ephemeral, verified in CI)
+docs/quiz-schema-reference.md
+
 # Environment files
 .env
 .env.*

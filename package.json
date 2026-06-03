@@ -19,6 +19,7 @@
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "docs:schemas": "tsx scripts/generate-schema-docs.ts",
+    "verify:schema-reference": "tsx scripts/verify-schema-reference.ts",
     "supabase:status": "supabase status",
     "supabase:db:push": "supabase db push",
     "supabase:db:reset": "supabase db reset",

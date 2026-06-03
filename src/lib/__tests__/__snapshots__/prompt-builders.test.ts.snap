@@ -284,16 +284,17 @@ Generated from the application Zod schemas and inline schema metadata.
 
 The full current quiz definition stored and edited by the admin flow.
 
-| field              | type          | required | constraints  | notes                                                        |
-| ------------------ | ------------- | -------- | ------------ | ------------------------------------------------------------ |
-| definition_version | number        | yes      | integer, > 0 | Monotonic version for the current definition snapshot.       |
-| description        | string        | no       | default      | Optional quiz description.                                   |
-| display_config     | DisplayConfig | yes      |              | Display-oriented configuration for quiz presentation.        |
-| questions          | Question[]    | yes      |              | Ordered question definitions in the quiz.                    |
-| schema_version     | number        | yes      | integer, > 0 | Quiz definition schema version.                              |
-| scoring_config     | ScoringConfig | yes      |              | Scoring-related configuration for the whole quiz definition. |
-| title              | string        | yes      | min length 1 | Human-facing quiz title.                                     |
-| traits             | Trait[]       | yes      |              | Ordered trait definitions used by all questions.             |
+| field              | type             | required | constraints  | notes                                                        |
+| ------------------ | ---------------- | -------- | ------------ | ------------------------------------------------------------ |
+| definition_version | number           | yes      | integer, > 0 | Monotonic version for the current definition snapshot.       |
+| description        | string           | no       | default      | Optional quiz description.                                   |
+| display_config     | DisplayConfig    | yes      |              | Display-oriented configuration for quiz presentation.        |
+| question_ordering  | QuestionOrdering | no       | default      | Controls how questions are sequenced during a quiz session.  |
+| questions          | Question[]       | yes      |              | Ordered question definitions in the quiz.                    |
+| schema_version     | number           | yes      | integer, > 0 | Quiz definition schema version.                              |
+| scoring_config     | ScoringConfig    | yes      |              | Scoring-related configuration for the whole quiz definition. |
+| title              | string           | yes      | min length 1 | Human-facing quiz title.                                     |
+| traits             | Trait[]          | yes      |              | Ordered trait definitions used by all questions.             |
 
 ## QuizEditPatch
 
@@ -321,9 +322,38 @@ Display-oriented configuration for quiz presentation.
 
 Scoring-related configuration for the whole quiz definition.
 
-| field      | type   | required | constraints  | notes                                                     |
-| ---------- | ------ | -------- | ------------ | --------------------------------------------------------- |
-| prior_info | number | no       | default, > 0 | Default prior information value used by adaptive scoring. |
+| field              | type                    | required | constraints  | notes                                                                                   |
+| ------------------ | ----------------------- | -------- | ------------ | --------------------------------------------------------------------------------------- |
+| adaptive_selection | AdaptiveSelectionConfig | no       |              | Adaptive question selection configuration. Required when question_ordering is adaptive. |
+| prior_info         | number                  | no       | default, > 0 | Default prior information value used by adaptive scoring.                               |
+
+## AdaptiveSelectionConfig
+
+Configuration for adaptive question selection. All vectors must align with the quiz trait order.
+
+| field                         | type     | required | constraints           | notes                                                                                                               |
+| ----------------------------- | -------- | -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| axis_purity_min               | number   | no       | default, >= 0, <= 1   | Minimum cosine similarity between expected-info and need vectors for a question to be a strong candidate.           |
+| batch_diversity_penalty       | number   | no       | default, >= 0         | Greedy batch diversity penalty multiplier for similarity to already-selected candidates.                            |
+| candidate_count               | number   | no       | default, integer, > 0 | Candidate batch size returned per selection cycle.                                                                  |
+| candidate_pool_size           | number   | no       | default, integer, > 0 | Number of top-scored questions to retain before greedy diversity selection.                                         |
+| contradiction_followup_weight | number   | no       | default, >= 0         | Weight applied to contradiction follow-up pressure in the need vector.                                              |
+| contradiction_target          | number[] | yes      |                       | Per-trait target contradiction level for follow-up scaling. Length must equal trait count.                          |
+| max_questions                 | number   | no       | default, integer, > 0 | Hard upper limit on questions presented.                                                                            |
+| min_goodness_to_ask           | number   | no       | default, >= 0, <= 1   | Normalized goodness threshold below which a question is considered a weak candidate. Used in post-minimum stopping. |
+| min_questions                 | number   | no       | default, integer, > 0 | Minimum questions answered before early-stop rules apply.                                                           |
+| need_power                    | number   | no       | default, > 0          | Exponent applied to deficit ratio when computing the need vector.                                                   |
+| off_axis_penalty              | number   | no       | default, >= 0         | Penalty multiplier for questions that over-load already-saturated traits.                                           |
+| recent_redundancy_penalty     | number   | no       | default, >= 0         | Penalty multiplier for cosine similarity to recently answered questions.                                            |
+| recent_window                 | number   | no       | default, integer, > 0 | Number of most-recently answered questions considered for redundancy penalty.                                       |
+| skipped_penalty               | number   | no       | default, >= 0         | Raw score penalty applied to questions previously skipped in this session.                                          |
+| target_info                   | number[] | yes      |                       | Per-trait target information level. Length must equal trait count.                                                  |
+| trait_priority                | number[] | yes      |                       | Per-trait priority multiplier applied to need. Length must equal trait count.                                       |
+| uncertainty_weight            | number   | no       | default, >= 0         | Weight applied to the uncertainty term in the need vector.                                                          |
+
+Notes:
+- target_info, trait_priority, and contradiction_target must each have length equal to trait count.
+- Adaptive selection chooses questions by computing a need vector and scoring candidates against expected information gain.
 
 ## Question
 
@@ -365,7 +395,7 @@ Union of all accepted quiz edit operations.
 | "replace_question"       | ReplaceQuestion      | Replace an existing question using optimistic concurrency on the old hash.                                                                |
 | "replace_scoring_config" | ReplaceScoringConfig | Replace the entire scoring_config object. This operation replaces the whole scoring_config object. It does not rewrite question matrices. |
 | "set_traits"             | SetTraits            | Replace the full trait list during initial setup.                                                                                         |
-| "update_quiz_metadata"   | UpdateQuizMetadata   | Update top-level quiz metadata without changing traits or questions. This operation only affects title and description.                   |
+| "update_quiz_metadata"   | UpdateQuizMetadata   | Update top-level quiz metadata without changing traits or questions. This operation affects title, description, and question_ordering.    |
 | "update_trait_text"      | UpdateTraitText      | Update only trait labels and descriptions without changing trait structure.                                                               |
 
 ## Trait
@@ -534,14 +564,15 @@ Replace the full trait list during initial setup.
 
 Update top-level quiz metadata without changing traits or questions.
 
-| field       | type                   | required | constraints  | notes |
-| ----------- | ---------------------- | -------- | ------------ | ----- |
-| description | string                 | no       |              |       |
-| op          | "update_quiz_metadata" | yes      |              |       |
-| title       | string                 | no       | min length 1 |       |
+| field             | type                   | required | constraints  | notes |
+| ----------------- | ---------------------- | -------- | ------------ | ----- |
+| description       | string                 | no       |              |       |
+| op                | "update_quiz_metadata" | yes      |              |       |
+| question_ordering | QuestionOrdering       | no       |              |       |
+| title             | string                 | no       | min length 1 |       |
 
 Notes:
-- This operation only affects title and description.
+- This operation affects title, description, and question_ordering.
 
 ## UpdateTraitText
 
