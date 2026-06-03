@@ -19,6 +19,8 @@ type DocsMeta = {
 
 const ROOT_EXPORT_NAMES = ['quizDefinitionSchema', 'quizEditPatchSchema'] as const;
 
+const EXCLUDED_EXPORT_NAMES: readonly string[] = [];
+
 const exportedSchemas: ExportedSchemaEntry[] = Object.entries(quizSchemas)
     .filter(([exportName, schema]) => exportName.endsWith('Schema') && schema instanceof z.ZodType)
     .map(([exportName, schema]) => ({
@@ -76,6 +78,10 @@ function getImmediateChildren(schema: AnySchema): AnySchema[] {
         return unwrapped.options;
     }
 
+    if (unwrapped instanceof z.ZodRecord) {
+        return [unwrapped.valueType as AnySchema];
+    }
+
     return [];
 }
 
@@ -86,6 +92,7 @@ function collectReachableDepths(): Map<AnySchema, number> {
         schema: (quizSchemas as Record<string, AnySchema>)[exportName],
     }));
     const seenAtDepth = new Map<AnySchema, number>();
+    const traversed = new Set<AnySchema>();
 
     while (queue.length > 0) {
         const current = queue.shift();
@@ -100,6 +107,7 @@ function collectReachableDepths(): Map<AnySchema, number> {
         }
 
         seenAtDepth.set(schema, current.depth);
+        traversed.add(schema);
 
         if (renderableSchemas.has(schema)) {
             const recordedDepth = depths.get(schema);
@@ -111,6 +119,25 @@ function collectReachableDepths(): Map<AnySchema, number> {
         for (const child of getImmediateChildren(schema)) {
             queue.push({ depth: current.depth + 1, schema: child });
         }
+    }
+
+    const excludedSchemas = new Set(
+        exportedSchemas
+            .filter(({ exportName }) => EXCLUDED_EXPORT_NAMES.includes(exportName))
+            .map(({ schema }) => unwrapSchema(schema))
+    );
+
+    const unreachable = renderableExportEntries
+        .filter(({ schema }) => {
+            const unwrapped = unwrapSchema(schema);
+            return !traversed.has(unwrapped) && !excludedSchemas.has(unwrapped);
+        })
+        .map(({ exportName }) => exportName);
+
+    if (unreachable.length > 0) {
+        throw new Error(
+            `The following renderable schemas are not reachable from any root and are not excluded: ${unreachable.join(', ')}`
+        );
     }
 
     return depths;

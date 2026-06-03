@@ -336,6 +336,15 @@ One trait-level matching rule for an archetype.
 | score_min         | number | no       |              | Optional inclusive lower bound for trait estimate.      |
 | trait_id          | string | yes      | min length 1 | Trait id this condition applies to.                     |
 
+## ArchetypeVariant
+
+Subtype display variant keyed by main archetype id.
+
+| field       | type   | required | constraints  | notes                                                                                |
+| ----------- | ------ | -------- | ------------ | ------------------------------------------------------------------------------------ |
+| description | string | yes      | min length 1 | Variant description shown when this subtype is paired with the keyed main archetype. |
+| name        | string | yes      | min length 1 | Variant name shown when this subtype is paired with the keyed main archetype.        |
+
 ## CrossFieldValidationRules
 
 - CreateQuestion: Cannot specify both before_question_id and after_question_id in the same operation.

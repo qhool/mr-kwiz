@@ -100,6 +100,12 @@ export const routeApiRequest = async (request: Request, env: AppEnv): Promise<Re
 
 export default {
     async fetch(request: Request, env: WorkerEnv): Promise<Response> {
-        return (await routeApiRequest(request, env)) ?? env.ASSETS.fetch(request);
+        const routedResponse = await routeApiRequest(request, env);
+
+        if (routedResponse) {
+            return routedResponse;
+        }
+
+        return env.ASSETS?.fetch(request) ?? fetch(request);
     },
 };

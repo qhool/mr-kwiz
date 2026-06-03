@@ -69,6 +69,28 @@ const parseArgs = (): CliOptions => {
 
 type EnvConfig = Record<string, Record<string, string>>;
 
+const PLACEHOLDER_ENV_PATTERNS = [/^your-/i, /placeholder/i, /^changeme$/i, /^replace-me$/i];
+
+const isPlaceholderValue = (value: string | undefined): boolean => {
+    if (!value) {
+        return false;
+    }
+
+    return PLACEHOLDER_ENV_PATTERNS.some((pattern) => pattern.test(value));
+};
+
+const assertConfiguredEnv = (env: LocalEnv, source: string): void => {
+    const placeholderKeys = (Object.entries(env) as Array<[keyof LocalEnv, string]>)
+        .filter(([, value]) => isPlaceholderValue(value))
+        .map(([key]) => key);
+
+    if (placeholderKeys.length > 0) {
+        throw new Error(
+            `${source} contains placeholder values for: ${placeholderKeys.join(', ')}. Replace them with real values before running create-admin-quiz.`
+        );
+    }
+};
+
 const readScriptEnvConfig = (envName: string): Partial<LocalEnv> & { BASE_URL?: string } => {
     const configPath = path.resolve(process.cwd(), '.script-envs.toml');
 
@@ -143,6 +165,8 @@ const main = async () => {
     const adminToken = options.key ?? generateCapabilityToken();
     const adminKeyDigest = await sha256Hex(adminToken);
     const definition = createDefaultQuizDefinition(options.title, options.description);
+
+    assertConfiguredEnv(env, options.env ? `.script-envs.toml [${options.env}]` : '.dev.vars');
 
     const supabase = createClient<Database>(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
         auth: {
