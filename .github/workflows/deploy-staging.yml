@@ -15,32 +15,9 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build application for staging
-        run: npm run build
-        env:
-          CLOUDFLARE_ENV: staging
-
-      - name: Run app tests
-        run: npm test
-
-      - name: Run functions tests
-        run: npm run test:functions
+    uses: ./.github/workflows/verify.yml
+    with:
+      cloudflare_env: staging
 
   deploy:
     runs-on: ubuntu-latest
@@ -99,10 +76,24 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
 
+      - name: Bootstrap staging smoke quiz
+        id: bootstrap
+        env:
+          APP_TOKEN_SECRET: ${{ secrets.APP_TOKEN_SECRET }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        run: |
+          set -euo pipefail
+          output=$(npx tsx scripts/bootstrap-smoke-quiz.ts)
+          echo "admin-key=$(echo "$output" | jq -r '.adminKey')" >> "$GITHUB_OUTPUT"
+          echo "quiz-id=$(echo "$output" | jq -r '.quizId')" >> "$GITHUB_OUTPUT"
+
       - name: Run deployed staging smoke tests
         env:
-          SMOKE_ADMIN_KEY: ${{ secrets.SMOKE_ADMIN_KEY }}
+          SMOKE_ADMIN_KEY: ${{ steps.bootstrap.outputs.admin-key }}
           SMOKE_BASE_URL: ${{ steps.deploy.outputs.deployment-url }}
+          SMOKE_CLEANUP_OWNED_QUIZ: "1"
+          SMOKE_QUIZ_ID: ${{ steps.bootstrap.outputs.quiz-id }}
           SMOKE_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SMOKE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         run: npm run test:smoke:api:staging

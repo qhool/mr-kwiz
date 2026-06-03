@@ -66,7 +66,7 @@ const QuizEditPage: React.FC = () => {
         }
 
         try {
-            const prompt = renderAdminSkillPrompt(definition, metadata);
+            const prompt = await renderAdminSkillPrompt(definition, metadata);
             await navigator.clipboard.writeText(prompt);
             setCopiedSkillBaselineVersion(metadata.current_definition_version);
             setMessage(

@@ -19,6 +19,12 @@ tmp/
 .dev.vars.*
 !.dev.vars.example
 
+# Script environment config (contains secrets)
+.script-envs.toml
+
+# Generated schema reference (ephemeral, verified in CI)
+docs/quiz-schema-reference.md
+
 # Environment files
 .env
 .env.*
@@ -45,4 +51,8 @@ Thumbs.db
 
 # Runtime leftovers
 *.pid
+
+# act local runner secrets (never commit these)
+.secrets.act
+.env.act
 *.pid.lock

@@ -1,4 +1,5 @@
 name = "mr-kwiz"
+main = "src/worker.ts"
 compatibility_date = "2026-05-24"
 upload_source_maps = true
 

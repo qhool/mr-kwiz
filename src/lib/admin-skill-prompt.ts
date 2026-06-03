@@ -1,9 +1,10 @@
 import Mustache from 'mustache';
 
 import skillTemplate from '../../docs/skill-template.md.mustache?raw';
-import schemaReference from '../../docs/quiz-schema-reference.md?raw';
 
+import { generateSchemaDocsArtifact } from './generated-schema-reference';
 import type { AdaptiveSelectionConfig, QuizDefinition } from './quiz-definition';
+import { getSchemaReferenceTagInfo } from './schema-reference-template';
 
 type AdminPromptMetadata = {
     current_definition_version: number;
@@ -23,11 +24,11 @@ type AdminSkillPromptContext = {
     question_count: number;
     question_index: string;
     question_ordering: string;
-    schema_reference: string;
     target_context: string;
     trait_count: number;
     trait_order: string;
-};
+} & Record<string, string | boolean | number>;
+const schemaReferenceTag = getSchemaReferenceTagInfo(skillTemplate);
 
 const NOT_PROVIDED = 'NOT PROVIDED';
 
@@ -156,7 +157,8 @@ const renderQuestionIndex = (definition: QuizDefinition): string => {
 
 const buildPromptContext = (
     definition: QuizDefinition,
-    metadata: AdminPromptMetadata
+    metadata: AdminPromptMetadata,
+    schemaReferenceMarkdown: string
 ): AdminSkillPromptContext => {
     const adaptiveCfg = definition.scoring_config.adaptive_selection;
     return {
@@ -172,16 +174,31 @@ const buildPromptContext = (
         question_count: definition.questions.length,
         question_index: renderQuestionIndex(definition),
         question_ordering: definition.question_ordering ?? 'ordered',
-        schema_reference: schemaReference.trim(),
         target_context: '',
         trait_count: definition.traits.length,
         trait_order: renderTraitOrder(definition),
+        [schemaReferenceTag.tagName]: schemaReferenceMarkdown.trim(),
     };
 };
 
 export const renderAdminSkillPrompt = (
     definition: QuizDefinition,
     metadata: AdminPromptMetadata
-): string => {
-    return Mustache.render(skillTemplate, buildPromptContext(definition, metadata)).trim();
+): Promise<string> => {
+    return renderAdminSkillPromptAsync(definition, metadata);
+};
+
+export const renderAdminSkillPromptAsync = async (
+    definition: QuizDefinition,
+    metadata: AdminPromptMetadata
+): Promise<string> => {
+    const artifact = await generateSchemaDocsArtifact();
+
+    if (artifact.sha256 !== schemaReferenceTag.sha256) {
+        throw new Error(
+            `Schema reference checksum mismatch: template expects ${schemaReferenceTag.sha256}, generated ${artifact.sha256}.`
+        );
+    }
+
+    return Mustache.render(skillTemplate, buildPromptContext(definition, metadata, artifact.markdown)).trim();
 };

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { parse as parseToml } from 'smol-toml';
 import { createClient } from '@supabase/supabase-js';
 
 import { buildAdminEditUrl, generateCapabilityToken, sha256Hex } from '../src/lib/admin-token';
@@ -10,6 +11,7 @@ import type { Database } from '../src/types/database.generated';
 type CliOptions = {
     baseUrl: string;
     description: string;
+    env: string | null;
     key?: string;
     title: string;
 };
@@ -22,7 +24,7 @@ type LocalEnv = {
 
 const parseArgs = (): CliOptions => {
     const args = process.argv.slice(2);
-    const options: Partial<CliOptions> = {};
+    const options: Partial<CliOptions> = { env: null };
 
     for (let index = 0; index < args.length; index += 1) {
         const arg = args[index];
@@ -45,6 +47,10 @@ const parseArgs = (): CliOptions => {
                 options.baseUrl = next;
                 index += 1;
                 break;
+            case '--env':
+                options.env = next;
+                index += 1;
+                break;
         }
     }
 
@@ -53,14 +59,39 @@ const parseArgs = (): CliOptions => {
     }
 
     return {
-        baseUrl: options.baseUrl ?? 'http://localhost:3000',
+        baseUrl: options.baseUrl ?? '',
         description: options.description ?? '',
+        env: options.env ?? null,
         key: options.key,
         title: options.title,
     };
 };
 
-const readLocalEnvFile = (): Partial<LocalEnv> => {
+type EnvConfig = Record<string, Record<string, string>>;
+
+const readScriptEnvConfig = (envName: string): Partial<LocalEnv> & { BASE_URL?: string } => {
+    const configPath = path.resolve(process.cwd(), '.script-envs.toml');
+
+    if (!existsSync(configPath)) {
+        throw new Error(
+            `--env requires a .script-envs.toml config file (not found at ${configPath}).\n` +
+            `Copy .script-envs.toml.example to get started.`
+        );
+    }
+
+    const config = parseToml(readFileSync(configPath, 'utf8')) as EnvConfig;
+
+    if (!config[envName]) {
+        const available = Object.keys(config).join(', ');
+        throw new Error(
+            `Unknown environment "${envName}". Available: ${available || '(none defined)'}`
+        );
+    }
+
+    return config[envName] as Partial<LocalEnv> & { BASE_URL?: string };
+};
+
+const readDevVarsFile = (): Partial<LocalEnv> => {
     const devVarsPath = path.resolve(process.cwd(), '.dev.vars');
 
     if (!existsSync(devVarsPath)) {
@@ -83,12 +114,13 @@ const readLocalEnvFile = (): Partial<LocalEnv> => {
     ) as Partial<LocalEnv>;
 };
 
-const getRequiredEnv = (): LocalEnv => {
-    const fileEnv = readLocalEnvFile();
+const getRequiredEnv = (envName: string | null): { env: LocalEnv; baseUrl: string } => {
+    const configValues = envName ? readScriptEnvConfig(envName) : readDevVarsFile();
+
     const mergedEnv: Partial<LocalEnv> = {
-        APP_TOKEN_SECRET: process.env.APP_TOKEN_SECRET ?? fileEnv.APP_TOKEN_SECRET,
-        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? fileEnv.SUPABASE_SERVICE_ROLE_KEY,
-        SUPABASE_URL: process.env.SUPABASE_URL ?? fileEnv.SUPABASE_URL,
+        APP_TOKEN_SECRET: process.env.APP_TOKEN_SECRET ?? configValues.APP_TOKEN_SECRET,
+        SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY ?? configValues.SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_URL: process.env.SUPABASE_URL ?? configValues.SUPABASE_URL,
     };
 
     const missing = Object.entries(mergedEnv)
@@ -99,12 +131,15 @@ const getRequiredEnv = (): LocalEnv => {
         throw new Error(`Missing required env values: ${missing.join(', ')}`);
     }
 
-    return mergedEnv as LocalEnv;
+    const baseUrl = (configValues as { BASE_URL?: string }).BASE_URL ?? 'http://localhost:3000';
+
+    return { env: mergedEnv as LocalEnv, baseUrl };
 };
 
 const main = async () => {
     const options = parseArgs();
-    const env = getRequiredEnv();
+    const { env, baseUrl: configBaseUrl } = getRequiredEnv(options.env);
+    const baseUrl = options.baseUrl || configBaseUrl;
     const adminToken = options.key ?? generateCapabilityToken();
     const adminKeyDigest = await sha256Hex(adminToken);
     const definition = createDefaultQuizDefinition(options.title, options.description);
@@ -133,7 +168,7 @@ const main = async () => {
 
     console.log(`Created quiz: ${data.id}`);
     console.log(`Current definition version: ${data.current_definition_version}`);
-    console.log(`Admin URL: ${buildAdminEditUrl(adminToken, options.baseUrl)}`);
+    console.log(`Admin URL: ${buildAdminEditUrl(adminToken, baseUrl)}`);
     console.log('Save this admin token now. It is not stored in plain text anywhere.');
 };
 
