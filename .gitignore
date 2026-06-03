@@ -51,4 +51,8 @@ Thumbs.db
 
 # Runtime leftovers
 *.pid
+
+# act local runner secrets (never commit these)
+.secrets.act
+.env.act
 *.pid.lock

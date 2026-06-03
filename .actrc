@@ -1,0 +1,15 @@
+# act local runner configuration
+# https://github.com/nektos/act
+
+# Use a full Ubuntu image so Node, Docker CLI, and system packages are available.
+-P ubuntu-latest=ghcr.io/catthehacker/ubuntu:act-latest
+
+# Don't re-pull the runner image on every run once it's cached locally.
+--pull=false
+
+# Share the host Docker socket so the DB verify step can start Supabase containers.
+--container-daemon-socket /var/run/docker.sock
+
+# Use host networking so containers can reach Supabase on 127.0.0.1 and the dev
+# server can bind the same loopback address that smoke tests target.
+--network host
