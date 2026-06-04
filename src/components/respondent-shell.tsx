@@ -2,6 +2,7 @@ import React from 'react';
 
 import type { StoredAdminSession, StoredRespondentSession } from '../lib/respondent-quiz';
 import { listStoredAdminSessions } from '../lib/respondent-quiz';
+import type { ResolvedThemeColors } from '../lib/theme-colors';
 import { SessionNavigationModal } from './session-navigation';
 
 type RespondentShellProps = {
@@ -10,6 +11,7 @@ type RespondentShellProps = {
     onSelectSession: (responseKey: string) => void;
     quizTitle: string;
     sessions: StoredRespondentSession[];
+    themeColors: ResolvedThemeColors;
 };
 
 export const RespondentShell: React.FC<RespondentShellProps> = ({
@@ -18,6 +20,7 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
     onSelectSession,
     quizTitle,
     sessions,
+    themeColors,
 }) => {
     const [isNavigationOpen, setIsNavigationOpen] = React.useState(false);
     const [adminSessions, setAdminSessions] = React.useState<StoredAdminSession[]>([]);
@@ -27,13 +30,20 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
     }, []);
 
     return (
-        <div style={{ minHeight: '100vh', padding: '2rem 1.5rem' }}>
+        <div
+            style={{
+                background: themeColors.page_background,
+                color: themeColors.body_text,
+                minHeight: '100vh',
+                padding: '2rem 1.5rem',
+            }}
+        >
             <div style={{ margin: '0 auto 1.5rem', maxWidth: 980 }}>
                 <header
                     style={{
                         alignItems: 'center',
-                        background: '#f8f7f3',
-                        border: '1px solid #b8ae98',
+                        background: themeColors.panel_background,
+                        border: `1px solid ${themeColors.panel_border}`,
                         borderRadius: 20,
                         boxShadow: '0 18px 45px rgba(45, 35, 20, 0.08)',
                         display: 'flex',
@@ -48,9 +58,9 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
                             onClick={() => setIsNavigationOpen(true)}
                             style={{
                                 background: 'transparent',
-                                border: '1px solid #b8ae98',
+                                border: `1px solid ${themeColors.panel_border}`,
                                 borderRadius: 999,
-                                color: '#7a6548',
+                                color: themeColors.muted_text,
                                 cursor: 'pointer',
                                 fontSize: '0.85rem',
                                 fontWeight: 500,
@@ -64,7 +74,7 @@ export const RespondentShell: React.FC<RespondentShellProps> = ({
                         <div style={{ color: '#4a3b26', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                             Mr. Kwiz
                         </div>
-                        <h1 style={{ color: '#241d14', fontSize: '1.6rem', margin: '0.25rem 0 0' }}>{quizTitle}</h1>
+                        <h1 style={{ color: themeColors.heading_text, fontSize: '1.6rem', margin: '0.25rem 0 0' }}>{quizTitle}</h1>
                     </div>
                 </header>
             </div>

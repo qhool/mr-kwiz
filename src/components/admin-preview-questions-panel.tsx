@@ -1,6 +1,7 @@
 import React from 'react';
 
 import type { Question, QuizDefinition } from '../lib/quiz-definition';
+import { deriveThemeUiColors, resolveThemeColors } from '../lib/theme-colors';
 import { QuizPreviewSurface } from './quiz-preview';
 
 type TraitFilterBucket = 'any' | 'high' | 'low';
@@ -48,18 +49,18 @@ const formatNumber = (value: number): string => {
     return value.toFixed(2);
 };
 
-const chipStyle: React.CSSProperties = {
+const chipStyle = (panelBackground: string, panelBorder: string, bodyText: string): React.CSSProperties => ({
     alignItems: 'center',
-    background: '#efe4cc',
-    border: '1px solid #cfbe9a',
+    background: panelBackground,
+    border: `1px solid ${panelBorder}`,
     borderRadius: 999,
-    color: '#3f3220',
+    color: bodyText,
     display: 'inline-flex',
     fontSize: '0.82rem',
     gap: '0.45rem',
     lineHeight: 1,
     padding: '0.4rem 0.6rem',
-};
+});
 
 const questionHeaderTextStyle: React.CSSProperties = {
     overflow: 'hidden',
@@ -71,6 +72,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
     definition,
     onCopyQuestionEditPrompt,
 }) => {
+    const colors = React.useMemo(() => resolveThemeColors(definition.display_config.theme_colors), [definition.display_config.theme_colors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
     const [expandedQuestionId, setExpandedQuestionId] = React.useState<string | null>(null);
     const [isFilterDrawerOpen, setIsFilterDrawerOpen] = React.useState(false);
     const [searchText, setSearchText] = React.useState('');
@@ -274,6 +277,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
     return (
         <QuizPreviewSurface
             subtitle="Search, filter, and inspect question-level scoring behavior."
+            themeColors={definition.display_config.theme_colors}
             title="Questions"
         >
             <div style={{ display: 'grid', gap: '0.85rem' }}>
@@ -283,10 +287,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                         onChange={(event) => setSearchText(event.target.value)}
                         placeholder="Search questions and responses..."
                         style={{
-                            background: '#fffdf7',
-                            border: '1px solid #c7b895',
+                            background: colors.page_background,
+                            border: `1px solid ${colors.panel_border}`,
                             borderRadius: 12,
-                            color: '#2f2619',
+                            color: colors.body_text,
                             flex: '1 1 18rem',
                             minWidth: 0,
                             padding: '0.6rem 0.75rem',
@@ -299,10 +303,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                         onClick={() => setIsFilterDrawerOpen((current) => !current)}
                         style={{
                             alignItems: 'center',
-                            background: isFilterDrawerOpen ? '#5a4629' : '#e9dfc8',
-                            border: isFilterDrawerOpen ? '1px solid #5a4629' : '1px solid #b8a983',
+                            background: isFilterDrawerOpen ? colors.accent : colors.page_background,
+                            border: `1px solid ${isFilterDrawerOpen ? colors.accent : colors.panel_border}`,
                             borderRadius: 12,
-                            color: isFilterDrawerOpen ? '#f5ecd9' : '#3f3220',
+                            color: isFilterDrawerOpen ? colors.accent_text : colors.body_text,
                             cursor: 'pointer',
                             display: 'inline-flex',
                             gap: '0.45rem',
@@ -328,9 +332,9 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                             onClick={clearAllFilters}
                             style={{
                                 background: 'transparent',
-                                border: '1px solid #bcae8a',
+                                border: `1px solid ${colors.panel_border}`,
                                 borderRadius: 999,
-                                color: '#4a3a24',
+                                color: colors.body_text,
                                 cursor: 'pointer',
                                 padding: '0.45rem 0.75rem',
                             }}
@@ -344,8 +348,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                 {isFilterDrawerOpen ? (
                     <div
                         style={{
-                            background: '#fffaf0',
-                            border: '1px solid #cfbe9a',
+                            background: colors.panel_background,
+                            border: `1px solid ${colors.panel_border}`,
                             borderRadius: 14,
                             display: 'grid',
                             gap: '0.8rem',
@@ -353,14 +357,14 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                         }}
                     >
                         <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.55rem' }}>
-                            <span style={{ color: '#4a3a24', fontSize: '0.88rem', fontWeight: 700 }}>Trait filter logic</span>
+                            <span style={{ color: colors.body_text, fontSize: '0.88rem', fontWeight: 700 }}>Trait filter logic</span>
                             <button
                                 onClick={() => setFilterLogicMode('or')}
                                 style={{
-                                    background: filterLogicMode === 'or' ? '#5a4629' : '#efe4cc',
-                                    border: '1px solid #bcae8a',
+                                    background: filterLogicMode === 'or' ? colors.accent : colors.page_background,
+                                    border: `1px solid ${colors.panel_border}`,
                                     borderRadius: 999,
-                                    color: filterLogicMode === 'or' ? '#f6eddc' : '#4a3a24',
+                                    color: filterLogicMode === 'or' ? colors.accent_text : colors.body_text,
                                     cursor: 'pointer',
                                     padding: '0.35rem 0.65rem',
                                 }}
@@ -371,10 +375,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                             <button
                                 onClick={() => setFilterLogicMode('and')}
                                 style={{
-                                    background: filterLogicMode === 'and' ? '#5a4629' : '#efe4cc',
-                                    border: '1px solid #bcae8a',
+                                    background: filterLogicMode === 'and' ? colors.accent : colors.page_background,
+                                    border: `1px solid ${colors.panel_border}`,
                                     borderRadius: 999,
-                                    color: filterLogicMode === 'and' ? '#f6eddc' : '#4a3a24',
+                                    color: filterLogicMode === 'and' ? colors.accent_text : colors.body_text,
                                     cursor: 'pointer',
                                     padding: '0.35rem 0.65rem',
                                 }}
@@ -395,17 +399,17 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                     <div
                                         key={trait.id}
                                         style={{
-                                            background: '#fcf8ee',
-                                            border: '1px solid #ddceb0',
+                                            background: colors.page_background,
+                                            border: `1px solid ${colors.panel_border}`,
                                             borderRadius: 12,
                                             display: 'grid',
                                             gap: '0.5rem',
                                             padding: '0.7rem',
                                         }}
                                     >
-                                        <div style={{ color: '#3a2e1d', fontWeight: 700 }}>{trait.label}</div>
+                                        <div style={{ color: colors.body_text, fontWeight: 700 }}>{trait.label}</div>
                                         <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))' }}>
-                                            <label style={{ color: '#4b3c25', display: 'grid', fontSize: '0.86rem', gap: '0.3rem' }}>
+                                            <label style={{ color: colors.body_text, display: 'grid', fontSize: '0.86rem', gap: '0.3rem' }}>
                                                 Score Contribution
                                                 <select
                                                     onChange={(event) => {
@@ -419,10 +423,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                         }));
                                                     }}
                                                     style={{
-                                                        background: '#fffdf8',
-                                                        border: '1px solid #ccb88f',
+                                                        background: colors.panel_background,
+                                                        border: `1px solid ${colors.panel_border}`,
                                                         borderRadius: 10,
-                                                        color: '#2f2619',
+                                                        color: colors.body_text,
                                                         padding: '0.45rem 0.55rem',
                                                     }}
                                                     value={filter.score}
@@ -432,7 +436,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                     <option value="low">Low score contribution</option>
                                                 </select>
                                             </label>
-                                            <label style={{ color: '#4b3c25', display: 'grid', fontSize: '0.86rem', gap: '0.3rem' }}>
+                                            <label style={{ color: colors.body_text, display: 'grid', fontSize: '0.86rem', gap: '0.3rem' }}>
                                                 Determination
                                                 <select
                                                     onChange={(event) => {
@@ -446,10 +450,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                         }));
                                                     }}
                                                     style={{
-                                                        background: '#fffdf8',
-                                                        border: '1px solid #ccb88f',
+                                                        background: colors.panel_background,
+                                                        border: `1px solid ${colors.panel_border}`,
                                                         borderRadius: 10,
-                                                        color: '#2f2619',
+                                                        color: colors.body_text,
                                                         padding: '0.45rem 0.55rem',
                                                     }}
                                                     value={filter.determination}
@@ -470,7 +474,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                 {hasAnyAppliedFilters ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                         {searchText.trim().length > 0 ? (
-                            <span style={chipStyle}>
+                            <span style={chipStyle(colors.page_background, colors.panel_border, colors.body_text)}>
                                 Search: “{searchText.trim()}”
                                 <button
                                     aria-label="Remove search filter"
@@ -478,7 +482,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                     style={{
                                         background: 'transparent',
                                         border: 'none',
-                                        color: '#3f3220',
+                                        color: colors.body_text,
                                         cursor: 'pointer',
                                         fontSize: '0.95rem',
                                         padding: 0,
@@ -505,7 +509,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                             const descriptor = [scoreLabel, determinationLabel].filter(Boolean).join(' + ');
 
                             return (
-                                <span key={trait.id} style={chipStyle}>
+                                <span key={trait.id} style={chipStyle(colors.page_background, colors.panel_border, colors.body_text)}>
                                     {trait.label}: {descriptor}
                                     <button
                                         aria-label={`Remove ${trait.label} filter`}
@@ -521,7 +525,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                         style={{
                                             background: 'transparent',
                                             border: 'none',
-                                            color: '#3f3220',
+                                            color: colors.body_text,
                                             cursor: 'pointer',
                                             fontSize: '0.95rem',
                                             padding: 0,
@@ -538,8 +542,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
 
                 <div
                     style={{
-                        background: '#f3ecd9',
-                        border: '1px solid #cfbe9a',
+                        background: colors.panel_background,
+                        border: `1px solid ${colors.panel_border}`,
                         borderRadius: 16,
                         maxHeight: '62vh',
                         overflowY: 'auto',
@@ -549,10 +553,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                     {filteredQuestions.length === 0 ? (
                         <div
                             style={{
-                                background: '#fffaf0',
-                                border: '1px dashed #ccb88f',
+                                background: colors.page_background,
+                                border: `1px dashed ${colors.panel_border}`,
                                 borderRadius: 12,
-                                color: '#56432a',
+                                color: colors.muted_text,
                                 padding: '0.95rem 1rem',
                             }}
                         >
@@ -567,8 +571,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                     <article
                                         key={question.id}
                                         style={{
-                                            background: '#fffdf8',
-                                            border: '1px solid #d8c8a5',
+                                            background: colors.page_background,
+                                            border: `1px solid ${colors.panel_border}`,
                                             borderRadius: 14,
                                             overflow: 'hidden',
                                         }}
@@ -582,7 +586,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                             style={{
                                                 background: 'transparent',
                                                 border: 'none',
-                                                color: '#2f2619',
+                                                color: colors.body_text,
                                                 cursor: 'pointer',
                                                 display: 'grid',
                                                 gap: '0.25rem',
@@ -592,13 +596,13 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                             }}
                                             type="button"
                                         >
-                                            <div style={{ color: '#6d5838', fontSize: '0.83rem', fontWeight: 700 }}>
+                                            <div style={{ color: colors.muted_text, fontSize: '0.83rem', fontWeight: 700 }}>
                                                 Question {index + 1}
                                             </div>
                                             <div style={{ ...questionHeaderTextStyle, fontWeight: 700 }}>
                                                 {question.prompt}
                                             </div>
-                                            <div style={{ ...questionHeaderTextStyle, color: '#6b5734', fontSize: '0.88rem' }}>
+                                            <div style={{ ...questionHeaderTextStyle, color: colors.muted_text, fontSize: '0.88rem' }}>
                                                 {question.responses.length} responses
                                             </div>
                                         </button>
@@ -606,7 +610,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                         {isExpanded ? (
                                             <div
                                                 style={{
-                                                    borderTop: '1px solid #e2d3b4',
+                                                    borderTop: `1px solid ${colors.panel_border}`,
                                                     display: 'grid',
                                                     gap: '0.9rem',
                                                     padding: '1rem',
@@ -619,10 +623,10 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                         }}
                                                         style={{
                                                             alignItems: 'center',
-                                                            background: '#6a5032',
+                                                            background: colors.accent,
                                                             border: 'none',
                                                             borderRadius: 999,
-                                                            color: '#f6f0df',
+                                                            color: colors.accent_text,
                                                             cursor: 'pointer',
                                                             display: 'inline-flex',
                                                             gap: '0.55rem',
@@ -639,12 +643,12 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                 </div>
 
                                                 <div>
-                                                    <div style={{ color: '#4d3b22', fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.35rem' }}>
+                                                    <div style={{ color: colors.muted_text, fontSize: '0.9rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                                                         Prompt
                                                     </div>
-                                                    <div style={{ color: '#2f2619' }}>{question.prompt}</div>
+                                                    <div style={{ color: colors.body_text }}>{question.prompt}</div>
                                                     {question.help_text ? (
-                                                        <div style={{ color: '#5f4b2f', marginTop: '0.45rem' }}>
+                                                        <div style={{ color: colors.muted_text, marginTop: '0.45rem' }}>
                                                             {question.help_text}
                                                         </div>
                                                     ) : null}
@@ -661,15 +665,15 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                             <div
                                                                 key={response.id}
                                                                 style={{
-                                                                    background: '#fcf8ef',
-                                                                    border: '1px solid #e2d3b4',
+                                                                    background: colors.panel_background,
+                                                                    border: `1px solid ${colors.panel_border}`,
                                                                     borderRadius: 12,
                                                                     padding: '0.65rem 0.75rem',
                                                                 }}
                                                             >
                                                                 <div
                                                                     style={{
-                                                                        color: '#30261a',
+                                                                        color: colors.body_text,
                                                                         fontWeight: 700,
                                                                     }}
                                                                 >
@@ -678,7 +682,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                 {response.help_text ? (
                                                                     <div
                                                                         style={{
-                                                                            color: '#624e31',
+                                                                            color: colors.muted_text,
                                                                             marginTop: '0.25rem',
                                                                         }}
                                                                     >
@@ -691,8 +695,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
 
                                                 <div
                                                     style={{
-                                                        background: '#fff9ef',
-                                                        border: '1px solid #ddccaa',
+                                                        background: colors.page_background,
+                                                        border: `1px solid ${colors.panel_border}`,
                                                         borderRadius: 12,
                                                         overflowX: 'auto',
                                                         padding: '0.65rem',
@@ -711,13 +715,13 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                 <th
                                                                     rowSpan={2}
                                                                     style={{
-                                                                        borderBottom: '1px solid #cfbe9a',
-                                                                        borderRight: '1px solid #cfbe9a',
-                                                                        color: '#4e3d24',
+                                                                        borderBottom: `1px solid ${colors.panel_border}`,
+                                                                        borderRight: `1px solid ${colors.panel_border}`,
+                                                                        color: colors.body_text,
                                                                         padding: '0.35rem 0.45rem',
                                                                         position: 'sticky',
                                                                         left: 0,
-                                                                        background: '#fff9ef',
+                                                                        background: colors.page_background,
                                                                         textAlign: 'left',
                                                                         zIndex: 1,
                                                                     }}
@@ -729,9 +733,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                         colSpan={2}
                                                                         key={response.id}
                                                                         style={{
-                                                                            borderBottom:
-                                                                                '1px solid #cfbe9a',
-                                                                            color: '#4e3d24',
+                                                                            borderBottom: `1px solid ${colors.panel_border}`,
+                                                                            color: colors.body_text,
                                                                             padding: '0.35rem 0.45rem',
                                                                             textAlign: 'center',
                                                                         }}
@@ -745,9 +748,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                     <React.Fragment key={`${response.id}-columns`}>
                                                                         <th
                                                                             style={{
-                                                                                borderBottom:
-                                                                                    '1px solid #dfcfad',
-                                                                                color: '#6b5734',
+                                                                                borderBottom: `1px solid ${colors.panel_border}`,
+                                                                                color: colors.muted_text,
                                                                                 fontWeight: 700,
                                                                                 padding:
                                                                                     '0.3rem 0.35rem',
@@ -757,9 +759,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                         </th>
                                                                         <th
                                                                             style={{
-                                                                                borderBottom:
-                                                                                    '1px solid #dfcfad',
-                                                                                color: '#6b5734',
+                                                                                borderBottom: `1px solid ${colors.panel_border}`,
+                                                                                color: colors.muted_text,
                                                                                 fontWeight: 700,
                                                                                 padding:
                                                                                     '0.3rem 0.35rem',
@@ -776,14 +777,13 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                 <tr key={trait.id}>
                                                                     <td
                                                                         style={{
-                                                                            borderRight:
-                                                                                '1px solid #e1d3b5',
-                                                                            color: '#3f3220',
+                                                                            borderRight: `1px solid ${colors.panel_border}`,
+                                                                            color: colors.body_text,
                                                                             fontWeight: 700,
                                                                             padding: '0.35rem 0.45rem',
                                                                             position: 'sticky',
                                                                             left: 0,
-                                                                            background: '#fff9ef',
+                                                                            background: colors.page_background,
                                                                         }}
                                                                     >
                                                                         {trait.label}
@@ -810,9 +810,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                                 >
                                                                                     <td
                                                                                         style={{
-                                                                                            borderBottom:
-                                                                                                '1px solid #efe2c9',
-                                                                                            color: '#3a2f1f',
+                                                                                            borderBottom: `1px solid ${ui.info_border}`,
+                                                                                            color: colors.body_text,
                                                                                             padding:
                                                                                                 '0.35rem 0.35rem',
                                                                                             textAlign:
@@ -827,9 +826,8 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                                                     </td>
                                                                                     <td
                                                                                         style={{
-                                                                                            borderBottom:
-                                                                                                '1px solid #efe2c9',
-                                                                                            color: '#3a2f1f',
+                                                                                            borderBottom: `1px solid ${ui.info_border}`,
+                                                                                            color: colors.body_text,
                                                                                             padding:
                                                                                                 '0.35rem 0.35rem',
                                                                                             textAlign:

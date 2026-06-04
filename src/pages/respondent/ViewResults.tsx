@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { QuizResultsScreen } from '../../components/quiz-preview';
 import { quizDefinitionSchema } from '../../lib/quiz-definition';
 import { computeRespondentScores, respondentSessionSchema, type RespondentSession } from '../../lib/respondent-quiz';
+import { resolveThemeColors } from '../../lib/theme-colors';
 
 export default function ViewResultsPage() {
     const { viewKey } = useParams<{ viewKey: string }>();
@@ -73,12 +74,13 @@ export default function ViewResultsPage() {
 
     const definition = quizDefinitionSchema.parse(session.snapshot.definition);
     const scoreSummary = computeRespondentScores(definition, session.answers);
+    const themeColors = resolveThemeColors(definition.display_config.theme_colors);
 
     return (
-        <div className="bg-white">
+        <div style={{ background: themeColors.page_background, minHeight: '100vh' }}>
             {/* Banner indicating this is a shared read-only snapshot */}
-            <div className="bg-blue-50 border-b border-blue-200 px-4 py-3 text-center">
-                <p className="text-sm text-blue-800">
+            <div style={{ background: themeColors.panel_background, borderBottom: `1px solid ${themeColors.panel_border}`, padding: '0.8rem 1rem', textAlign: 'center' }}>
+                <p style={{ color: themeColors.muted_text, fontSize: '0.9rem', margin: 0 }}>
                     📖 This is a shared read-only snapshot of quiz results
                 </p>
             </div>
@@ -86,6 +88,7 @@ export default function ViewResultsPage() {
             {/* Results displayed in read-only mode */}
             <div style={{ margin: '0 auto', maxWidth: 980, padding: '2rem' }}>
                 <QuizResultsScreen
+                    archetypeNameTemplate={definition.display_config.archetype_name_template}
                     completionMarkdown={definition.display_config.completion_markdown}
                     eyebrow="Shared Results"
                     scaleMax={definition.display_config.result_scale_max ?? 1}
@@ -93,6 +96,7 @@ export default function ViewResultsPage() {
                     scores={scoreSummary.scores}
                     selectedArchetype={scoreSummary.selectedArchetype}
                     subtitle="These results were shared with you"
+                    themeColors={definition.display_config.theme_colors}
                     title={definition.title}
                     traits={definition.traits}
                     traitStats={scoreSummary.traitStats}

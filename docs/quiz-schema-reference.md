@@ -6,17 +6,17 @@ Generated from the application Zod schemas and inline schema metadata.
 
 The full current quiz definition stored and edited by the admin flow.
 
-| field              | type             | required | constraints  | notes                                                        |
-| ------------------ | ---------------- | -------- | ------------ | ------------------------------------------------------------ |
-| definition_version | number           | yes      | integer, > 0 | Monotonic version for the current definition snapshot.       |
-| description        | string           | no       | default      | Optional quiz description.                                   |
-| display_config     | DisplayConfig    | yes      |              | Display-oriented configuration for quiz presentation.        |
-| question_ordering  | QuestionOrdering | no       | default      | Controls how questions are sequenced during a quiz session.  |
-| questions          | Question[]       | yes      |              | Ordered question definitions in the quiz.                    |
-| schema_version     | number           | yes      | integer, > 0 | Quiz definition schema version.                              |
-| scoring_config     | ScoringConfig    | yes      |              | Scoring-related configuration for the whole quiz definition. |
-| title              | string           | yes      | min length 1 | Human-facing quiz title.                                     |
-| traits             | Trait[]          | yes      |              | Ordered trait definitions used by all questions.             |
+| field              | type             | required | constraints  | notes                                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ---------------- | -------- | ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| definition_version | number           | yes      | integer, > 0 | Monotonic version for the current definition snapshot.                                                                                                                                                                                                                                                                    |
+| description        | string           | no       | default      | Optional quiz description.                                                                                                                                                                                                                                                                                                |
+| display_config     | DisplayConfig    | yes      |              | Display-oriented configuration for quiz presentation. When a main archetype and subtype both match, archetype_name_template renders the combined result name with Mustache. If omitted, the display falls back to "Main (Subtype)". The template is ignored for main-only results, which display the main archetype name. |
+| question_ordering  | QuestionOrdering | no       | default      | Controls how questions are sequenced during a quiz session.                                                                                                                                                                                                                                                               |
+| questions          | Question[]       | yes      |              | Ordered question definitions in the quiz.                                                                                                                                                                                                                                                                                 |
+| schema_version     | number           | yes      | integer, > 0 | Quiz definition schema version.                                                                                                                                                                                                                                                                                           |
+| scoring_config     | ScoringConfig    | yes      |              | Scoring-related configuration for the whole quiz definition.                                                                                                                                                                                                                                                              |
+| title              | string           | yes      | min length 1 | Human-facing quiz title.                                                                                                                                                                                                                                                                                                  |
+| traits             | Trait[]          | yes      |              | Ordered trait definitions used by all questions.                                                                                                                                                                                                                                                                          |
 
 ## QuizEditPatch
 
@@ -31,14 +31,20 @@ Patch envelope accepted by the admin edit API.
 
 Display-oriented configuration for quiz presentation.
 
-| field               | type        | required | constraints | notes                                                                                   |
-| ------------------- | ----------- | -------- | ----------- | --------------------------------------------------------------------------------------- |
-| archetypes          | Archetype[] | no       | default     | Ordered archetype and subtype definitions used for result classification.               |
-| completion_markdown | string      | no       |             | Markdown shown after the quiz is completed.                                             |
-| intro_markdown      | string      | no       |             | Markdown shown before the quiz starts.                                                  |
-| result_scale_max    | number      | no       |             | Optional upper bound for result display scaling.                                        |
-| result_scale_min    | number      | no       |             | Optional lower bound for result display scaling.                                        |
-| trait_polarity      | ZodEnum     | no       | default     | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max). |
+| field                   | type        | required | constraints  | notes                                                                                                                                                                              |
+| ----------------------- | ----------- | -------- | ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| archetype_name_template | string      | no       | min length 1 | Optional Mustache template for combining matched main and subtype archetype names. Available placeholders: {{main}}, {{sub}}, {{main_archetype_name}}, and {{sub_archetype_name}}. |
+| archetypes              | Archetype[] | no       | default      | Ordered archetype and subtype definitions used for result classification.                                                                                                          |
+| completion_markdown     | string      | no       |              | Markdown shown after the quiz is completed.                                                                                                                                        |
+| intro_markdown          | string      | no       |              | Markdown shown before the quiz starts.                                                                                                                                             |
+| result_scale_max        | number      | no       |              | Optional upper bound for result display scaling.                                                                                                                                   |
+| result_scale_min        | number      | no       |              | Optional lower bound for result display scaling.                                                                                                                                   |
+| theme_colors            | ThemeColors | no       |              | Optional respondent UI theme color overrides.                                                                                                                                      |
+| trait_polarity          | ZodEnum     | no       | default      | Whether traits display as bidirectional scales (centered) or unidirectional (0 to max).                                                                                            |
+
+Notes:
+- When a main archetype and subtype both match, archetype_name_template renders the combined result name with Mustache. If omitted, the display falls back to "Main (Subtype)".
+- The template is ignored for main-only results, which display the main archetype name.
 
 ## ScoringConfig
 
@@ -119,6 +125,29 @@ Union of all accepted quiz edit operations.
 | "set_traits"             | SetTraits            | Replace the full trait list during initial setup.                                                                                         |
 | "update_quiz_metadata"   | UpdateQuizMetadata   | Update top-level quiz metadata without changing traits or questions. This operation affects title, description, and question_ordering.    |
 | "update_trait_text"      | UpdateTraitText      | Update only trait labels and descriptions without changing trait structure.                                                               |
+
+## ThemeColors
+
+Optional fixed-key theme colors used to style respondent-facing UI.
+
+| field            | type   | required | constraints | notes                                           |
+| ---------------- | ------ | -------- | ----------- | ----------------------------------------------- |
+| accent           | string | no       |             | Primary accent color for buttons and emphasis.  |
+| accent_text      | string | no       |             | Foreground text color shown on accent surfaces. |
+| body_text        | string | no       |             | Body text color.                                |
+| chart_band       | string | no       |             | Chart spread/band color token.                  |
+| chart_grid       | string | no       |             | Chart grid/axis line color token.               |
+| chart_negative   | string | no       |             | Negative/result-backward chart color token.     |
+| chart_positive   | string | no       |             | Positive/result-forward chart color token.      |
+| heading_text     | string | no       |             | Heading text color.                             |
+| muted_text       | string | no       |             | Muted/supporting text color.                    |
+| page_background  | string | no       |             | Page background color for respondent screens.   |
+| panel_background | string | no       |             | Primary panel/surface background color.         |
+| panel_border     | string | no       |             | Primary panel border color.                     |
+
+Notes:
+- All theme color fields are optional; absent values fall back to the default UI palette.
+- Custom themes can be created by setting theme_colors directly via replace_display_config.
 
 ## Trait
 
@@ -241,10 +270,10 @@ Reorder the existing trait list before any questions exist.
 
 Replace the entire display_config object.
 
-| field          | type                     | required | constraints | notes                                                 |
-| -------------- | ------------------------ | -------- | ----------- | ----------------------------------------------------- |
-| display_config | DisplayConfig            | yes      |             | Display-oriented configuration for quiz presentation. |
-| op             | "replace_display_config" | yes      |             |                                                       |
+| field          | type                     | required | constraints | notes                                                                                                                                                                                                                                                                                                                     |
+| -------------- | ------------------------ | -------- | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| display_config | DisplayConfig            | yes      |             | Display-oriented configuration for quiz presentation. When a main archetype and subtype both match, archetype_name_template renders the combined result name with Mustache. If omitted, the display falls back to "Main (Subtype)". The template is ignored for main-only results, which display the main archetype name. |
+| op             | "replace_display_config" | yes      |             |                                                                                                                                                                                                                                                                                                                           |
 
 Notes:
 - This operation replaces the whole display_config object.

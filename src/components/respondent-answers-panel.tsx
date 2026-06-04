@@ -1,11 +1,13 @@
 import React from 'react';
 
-import type { QuizDefinition } from '../lib/quiz-definition';
+import type { QuizDefinition, ThemeColors } from '../lib/quiz-definition';
 import type { AnsweredQuestion } from '../lib/respondent-quiz';
+import { deriveThemeUiColors, resolveThemeColors } from '../lib/theme-colors';
 
 type RespondentAnswersPanelProps = {
     answers: AnsweredQuestion[];
     definition: QuizDefinition;
+    themeColors?: ThemeColors;
 };
 
 const truncateTextStyle: React.CSSProperties = {
@@ -14,9 +16,11 @@ const truncateTextStyle: React.CSSProperties = {
     whiteSpace: 'nowrap',
 };
 
-export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ answers, definition }) => {
+export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ answers, definition, themeColors }) => {
     const [isOpen, setIsOpen] = React.useState(false);
     const [expandedQuestionId, setExpandedQuestionId] = React.useState<string | null>(null);
+    const colors = React.useMemo(() => resolveThemeColors(themeColors), [themeColors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
 
     const answeredQuestions = answers
         .map((answer) => {
@@ -38,8 +42,8 @@ export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ 
     return (
         <section
             style={{
-                background: 'rgba(255, 250, 240, 0.92)',
-                border: '1px solid #c8bfa9',
+                background: colors.panel_background,
+                border: `1px solid ${colors.panel_border}`,
                 borderRadius: 20,
                 marginTop: '1.5rem',
                 overflow: 'hidden',
@@ -50,7 +54,7 @@ export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ 
                 style={{
                     background: 'transparent',
                     border: 'none',
-                    color: '#342c20',
+                    color: colors.body_text,
                     cursor: 'pointer',
                     fontSize: '1rem',
                     padding: '1rem 1.2rem',
@@ -63,18 +67,18 @@ export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ 
             </button>
 
             {isOpen ? (
-                <div style={{ borderTop: '1px solid #d9ccb0', display: 'grid', gap: '0.85rem', padding: '1rem 1.2rem 1.2rem' }}>
+                <div style={{ borderTop: `1px solid ${colors.panel_border}`, display: 'grid', gap: '0.85rem', padding: '1rem 1.2rem 1.2rem' }}>
                     {answeredQuestions.map(({ answer, question, selectedResponse }) => {
                         const isExpanded = expandedQuestionId === question.id;
 
                         return (
-                            <article key={question.id} style={{ border: '1px solid #d9ccb0', borderRadius: 16, overflow: 'hidden' }}>
+                            <article key={question.id} style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 16, overflow: 'hidden' }}>
                                 <button
                                     onClick={() =>
                                         setExpandedQuestionId((current) => (current === question.id ? null : question.id))
                                     }
                                     style={{
-                                        background: '#fffdf7',
+                                        background: colors.page_background,
                                         border: 'none',
                                         cursor: 'pointer',
                                         display: 'grid',
@@ -85,15 +89,15 @@ export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ 
                                     }}
                                     type="button"
                                 >
-                                    <div style={{ ...truncateTextStyle, color: '#342c20', fontWeight: 700 }}>{question.prompt}</div>
-                                    <div style={{ ...truncateTextStyle, color: '#6b5734', fontSize: '0.92rem' }}>{selectedResponse.label}</div>
+                                    <div style={{ ...truncateTextStyle, color: colors.body_text, fontWeight: 700 }}>{question.prompt}</div>
+                                    <div style={{ ...truncateTextStyle, color: colors.muted_text, fontSize: '0.92rem' }}>{selectedResponse.label}</div>
                                 </button>
 
                                 {isExpanded ? (
-                                    <div style={{ borderTop: '1px solid #e4d7be', display: 'grid', gap: '0.9rem', padding: '1rem' }}>
+                                    <div style={{ borderTop: `1px solid ${colors.panel_border}`, display: 'grid', gap: '0.9rem', padding: '1rem' }}>
                                         <div>
-                                            <div style={{ color: '#4d3b22', fontWeight: 700, marginBottom: '0.4rem' }}>Question</div>
-                                            <div style={{ color: '#342c20' }}>{question.prompt}</div>
+                                            <div style={{ color: colors.muted_text, fontWeight: 700, marginBottom: '0.4rem' }}>Question</div>
+                                            <div style={{ color: colors.body_text }}>{question.prompt}</div>
                                         </div>
                                         <div style={{ display: 'grid', gap: '0.7rem' }}>
                                             {question.responses
@@ -106,15 +110,15 @@ export const RespondentAnswersPanel: React.FC<RespondentAnswersPanelProps> = ({ 
                                                         <div
                                                             key={response.id}
                                                             style={{
-                                                                background: isSelected ? 'rgba(139, 105, 64, 0.12)' : '#fffdf7',
-                                                                border: isSelected ? '2px solid #8b6940' : '1px solid #e1d4ba',
+                                                                background: isSelected ? ui.accent_soft : colors.page_background,
+                                                                border: isSelected ? `2px solid ${colors.accent}` : `1px solid ${colors.panel_border}`,
                                                                 borderRadius: 14,
                                                                 padding: '0.85rem 0.95rem',
                                                             }}
                                                         >
-                                                            <div style={{ color: '#342c20', fontWeight: 700 }}>{response.label}</div>
+                                                            <div style={{ color: colors.body_text, fontWeight: 700 }}>{response.label}</div>
                                                             {response.help_text ? (
-                                                                <div style={{ color: '#6b5734', marginTop: '0.3rem' }}>{response.help_text}</div>
+                                                                <div style={{ color: colors.muted_text, marginTop: '0.3rem' }}>{response.help_text}</div>
                                                             ) : null}
                                                         </div>
                                                     );

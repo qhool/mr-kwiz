@@ -204,6 +204,7 @@ describe('getSelectedArchetypeDisplay', () => {
         const selected = selectArchetype(definition, stats({ estimate: 2 }));
 
         expect(getSelectedArchetypeDisplay(selected)).toEqual({
+            displayName: 'main-a',
             mainName: 'main-a',
             mainDescription: 'main-a description',
             subtypeName: undefined,
@@ -222,6 +223,7 @@ describe('getSelectedArchetypeDisplay', () => {
         const selected = selectArchetype(definition, stats({ estimate: 2 }));
 
         expect(getSelectedArchetypeDisplay(selected)).toEqual({
+            displayName: 'main-a (sub-a)',
             mainName: 'main-a',
             mainDescription: 'main-a description',
             subtypeName: 'sub-a',
@@ -254,16 +256,54 @@ describe('getSelectedArchetypeDisplay', () => {
         const selectedMainB = selectArchetype(definition, stats({ estimate: 0 }, { estimate: 3 }));
 
         expect(getSelectedArchetypeDisplay(selectedMainA)).toEqual({
+            displayName: 'main-a (Variant A)',
             mainName: 'main-a',
             mainDescription: 'main-a description',
             subtypeName: 'Variant A',
             subtypeDescription: 'Variant for main A',
         });
         expect(getSelectedArchetypeDisplay(selectedMainB)).toEqual({
+            displayName: 'main-b (Variant B)',
             mainName: 'main-b',
             mainDescription: 'main-b description',
             subtypeName: 'Variant B',
             subtypeDescription: 'Variant for main B',
         });
+    });
+
+    it('renders subtype display names with an optional Mustache template', () => {
+        const definition = buildDefinition([
+            makeMain('main-a', 1, { name: 'Anchor & Lead' }),
+            makeSubtype('sub-a', 2, {
+                name: 'Spark',
+                compatibility_mode: 'allow-list',
+                compatibility_main_archetype_ids: ['main-a'],
+            }),
+        ]);
+        const selected = selectArchetype(definition, stats({ estimate: 2 }));
+
+        expect(getSelectedArchetypeDisplay(selected, '{{sub}} of {{main}}')?.displayName).toBe(
+            'Spark of Anchor & Lead'
+        );
+    });
+
+    it('keeps main-only display names independent from the subtype template', () => {
+        const definition = buildDefinition([makeMain('main-a', 1, { name: 'Anchor' })]);
+        const selected = selectArchetype(definition, stats({ estimate: 2 }));
+
+        expect(getSelectedArchetypeDisplay(selected, '{{sub}} of {{main}}')?.displayName).toBe('Anchor');
+    });
+
+    it('falls back to the default combined name when a template renders empty', () => {
+        const definition = buildDefinition([
+            makeMain('main-a', 1),
+            makeSubtype('sub-a', 2, {
+                compatibility_mode: 'allow-list',
+                compatibility_main_archetype_ids: ['main-a'],
+            }),
+        ]);
+        const selected = selectArchetype(definition, stats({ estimate: 2 }));
+
+        expect(getSelectedArchetypeDisplay(selected, '{{unknown}}')?.displayName).toBe('main-a (sub-a)');
     });
 });

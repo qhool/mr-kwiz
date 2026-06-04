@@ -167,6 +167,37 @@ export const archetypeSchema = z
         description: 'Main archetype or subtype definition used for result classification.',
     });
 
+const hexColorSchema = z
+    .string()
+    .regex(/^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/, {
+        message: 'Theme colors must be hex values like #RRGGBB or #RRGGBBAA.',
+    });
+
+export const themeColorsSchema = z
+    .strictObject({
+        page_background: hexColorSchema.optional().meta({ description: 'Page background color for respondent screens.' }),
+        panel_background: hexColorSchema.optional().meta({ description: 'Primary panel/surface background color.' }),
+        panel_border: hexColorSchema.optional().meta({ description: 'Primary panel border color.' }),
+        heading_text: hexColorSchema.optional().meta({ description: 'Heading text color.' }),
+        body_text: hexColorSchema.optional().meta({ description: 'Body text color.' }),
+        muted_text: hexColorSchema.optional().meta({ description: 'Muted/supporting text color.' }),
+        accent: hexColorSchema.optional().meta({ description: 'Primary accent color for buttons and emphasis.' }),
+        accent_text: hexColorSchema.optional().meta({ description: 'Foreground text color shown on accent surfaces.' }),
+        chart_positive: hexColorSchema.optional().meta({ description: 'Positive/result-forward chart color token.' }),
+        chart_negative: hexColorSchema.optional().meta({ description: 'Negative/result-backward chart color token.' }),
+        chart_grid: hexColorSchema.optional().meta({ description: 'Chart grid/axis line color token.' }),
+        chart_band: hexColorSchema.optional().meta({ description: 'Chart spread/band color token.' }),
+    })
+    .meta({
+        description: 'Optional fixed-key theme colors used to style respondent-facing UI.',
+        docs: {
+            notes: [
+                'All theme color fields are optional; absent values fall back to the default UI palette.',
+                'Custom themes can be created by setting theme_colors directly via replace_display_config.',
+            ],
+        },
+    });
+
 export const displayConfigSchema = z
     .looseObject({
         intro_markdown: z.string().optional().meta({ description: 'Markdown shown before the quiz starts.' }),
@@ -175,9 +206,17 @@ export const displayConfigSchema = z
         result_scale_max: z.number().optional().meta({ description: 'Optional upper bound for result display scaling.' }),
         trait_polarity: z.enum(['bidirectional', 'unidirectional']).default('bidirectional').meta({ description: 'Whether traits display as bidirectional scales (centered) or unidirectional (0 to max).' }),
         archetypes: z.array(archetypeSchema).default([]).meta({ description: 'Ordered archetype and subtype definitions used for result classification.' }),
+        archetype_name_template: z.string().min(1).optional().meta({ description: 'Optional Mustache template for combining matched main and subtype archetype names. Available placeholders: {{main}}, {{sub}}, {{main_archetype_name}}, and {{sub_archetype_name}}.' }),
+        theme_colors: themeColorsSchema.optional().meta({ description: 'Optional respondent UI theme color overrides.' }),
     })
     .meta({
         description: 'Display-oriented configuration for quiz presentation.',
+        docs: {
+            notes: [
+                'When a main archetype and subtype both match, archetype_name_template renders the combined result name with Mustache. If omitted, the display falls back to "Main (Subtype)".',
+                'The template is ignored for main-only results, which display the main archetype name.',
+            ],
+        },
     });
 
 export const questionSchema = z
@@ -599,6 +638,7 @@ export type ScoringConfig = z.infer<typeof scoringConfigSchema>;
 export type ArchetypeTraitCondition = z.infer<typeof archetypeTraitConditionSchema>;
 export type ArchetypeVariant = z.infer<typeof archetypeVariantSchema>;
 export type Archetype = z.infer<typeof archetypeSchema>;
+export type ThemeColors = z.infer<typeof themeColorsSchema>;
 export type DisplayConfig = z.infer<typeof displayConfigSchema>;
 export type QuizDefinition = z.infer<typeof quizDefinitionSchema>;
 export type ReplaceDisplayConfig = z.infer<typeof replaceDisplayConfigSchema>;

@@ -1,7 +1,8 @@
 import { z } from 'zod';
+import Mustache from 'mustache';
 
 import { resultSharingModeSchema } from './admin-invitations';
-import type { Archetype, AdaptiveSelectionConfig, Question, QuizDefinition, Trait } from './quiz-definition';
+import { themeColorsSchema, type Archetype, type AdaptiveSelectionConfig, type Question, type QuizDefinition, type Trait } from './quiz-definition';
 
 const RESPONDENT_STORAGE_KEY = 'mrkwiz.respondentSessions.v1';
 const ADMIN_STORAGE_KEY = 'mrkwiz.adminTokens.v1';
@@ -41,6 +42,7 @@ export const respondentInvitationPickupSchema = z.object({
         description: z.string(),
         id: z.string().uuid(),
         intro_markdown: z.string().optional().default(''),
+        theme_colors: themeColorsSchema.optional(),
         title: z.string().min(1),
     }),
 });
@@ -113,6 +115,7 @@ export type SelectedArchetypeInfo = {
 };
 
 export type SelectedArchetypeDisplay = {
+    displayName: string;
     mainDescription: string;
     mainName: string;
     subtypeDescription?: string;
@@ -210,8 +213,39 @@ export const selectArchetype = (
     };
 };
 
+const renderArchetypeDisplayName = (
+    mainName: string,
+    subtypeName?: string,
+    archetypeNameTemplate?: string
+): string => {
+    if (!subtypeName) {
+        return mainName;
+    }
+
+    if (!archetypeNameTemplate) {
+        return `${mainName} (${subtypeName})`;
+    }
+
+    const renderedName = Mustache.render(
+        archetypeNameTemplate,
+        {
+            main: mainName,
+            main_archetype_name: mainName,
+            sub: subtypeName,
+            sub_archetype_name: subtypeName,
+            subtype: subtypeName,
+            subtype_name: subtypeName,
+        },
+        undefined,
+        { escape: (value: string) => value }
+    ).trim();
+
+    return renderedName || `${mainName} (${subtypeName})`;
+};
+
 export const getSelectedArchetypeDisplay = (
-    selectedArchetype?: SelectedArchetypeInfo
+    selectedArchetype?: SelectedArchetypeInfo,
+    archetypeNameTemplate?: string
 ): SelectedArchetypeDisplay | undefined => {
     if (!selectedArchetype) {
         return undefined;
@@ -219,12 +253,14 @@ export const getSelectedArchetypeDisplay = (
 
     const { main, subtype } = selectedArchetype;
     const variant = subtype?.variants_by_main_archetype_id?.[main.id];
+    const subtypeName = subtype ? variant?.name ?? subtype.name : undefined;
 
     return {
+        displayName: renderArchetypeDisplayName(main.name, subtypeName, archetypeNameTemplate),
         mainDescription: main.description,
         mainName: main.name,
         subtypeDescription: subtype ? variant?.description ?? subtype.description : undefined,
-        subtypeName: subtype ? variant?.name ?? subtype.name : undefined,
+        subtypeName,
     };
 };
 

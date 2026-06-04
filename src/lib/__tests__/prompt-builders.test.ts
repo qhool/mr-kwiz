@@ -58,6 +58,9 @@ describe('renderAdminSkillPrompt', () => {
         expect(prompt).toContain('| position | trait_id | label   | low_label | high_label |');
         expect(prompt).toContain('| 1        | trait-a  | Trait A | Low A     | High A     |');
 
+        // Includes theme color section for custom style editing
+        expect(prompt).toContain('## Theme Colors');
+
         // Check if adaptive selection configuration table is formatted properly
         expect(prompt).toContain('## Adaptive Selection Configuration');
         expect(prompt).toContain('| position | target_info | trait_priority | contradiction_target |');

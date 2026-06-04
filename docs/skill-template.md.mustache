@@ -97,7 +97,7 @@ If the edit cannot be safely produced without clarification, ask the user the mi
 * Trait count: {{trait_count}}
 * Question ordering: {{question_ordering}}
 
-{{{schema_reference_sha256_5d6c1a8d409e545247abbb8a0268a244a55d5866ac9a4180da64d0ee3df1eeb3}}}
+{{{schema_reference_sha256_a547af12a238018e0406a9355fe35b3da596cbf7e97187a1c6abb112725d1063}}}
 
 ## Question Ordering
 
@@ -158,6 +158,8 @@ When authoring questions for adaptive quizzes, set `adaptive_eligible: true` on 
 {{/has_adaptive_selection}}
 
 {{{trait_order}}}
+
+{{{theme_colors}}}
 
 {{#has_questions}}
 {{{question_index}}}
@@ -410,4 +412,3 @@ Before producing paste-back JSON, verify:
 * Information matrix values are nonnegative.
 * replace_question and delete_question include the exact supplied old_question_hash.
 * The patch does not alter unrelated entities.
-

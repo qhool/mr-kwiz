@@ -150,6 +150,22 @@ describe('quizDefinitionSchema', () => {
         expect(() => quizDefinitionSchema.parse(makeDefinition())).not.toThrow();
     });
 
+    it('accepts display_config without theme_colors for backward compatibility', () => {
+        const definition = makeDefinition();
+        delete (definition.display_config as { theme_colors?: unknown }).theme_colors;
+
+        expect(() => quizDefinitionSchema.parse(definition)).not.toThrow();
+    });
+
+    it('rejects invalid theme_colors values', () => {
+        const definition = makeDefinition();
+        (definition.display_config as { theme_colors?: unknown }).theme_colors = {
+            page_background: 'not-a-color',
+        };
+
+        expect(() => quizDefinitionSchema.parse(definition)).toThrow('Theme colors must be hex values like #RRGGBB or #RRGGBBAA.');
+    });
+
     it.each([
         {
             name: 'duplicate trait ids',
