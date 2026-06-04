@@ -313,6 +313,7 @@ export const QuizQuestionScreen: React.FC<{
 };
 
 export const QuizResultsScreen: React.FC<{
+    archetypeNameTemplate?: string;
     completionMarkdown?: string;
     eyebrow?: string;
     scaleMax: number;
@@ -325,15 +326,13 @@ export const QuizResultsScreen: React.FC<{
     traits: Trait[];
     traitPolarity: 'bidirectional' | 'unidirectional';
     traitStats?: Record<string, TraitStatistics>;
-}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', themeColors, traits, traitPolarity, traitStats }) => {
+}> = ({ archetypeNameTemplate, completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', themeColors, traits, traitPolarity, traitStats }) => {
     const selectedArchetypeDisplay = React.useMemo(
-        () => getSelectedArchetypeDisplay(selectedArchetype),
-        [selectedArchetype]
+        () => getSelectedArchetypeDisplay(selectedArchetype, archetypeNameTemplate),
+        [archetypeNameTemplate, selectedArchetype]
     );
     const resolvedTheme = React.useMemo(() => resolveThemeColors(themeColors), [themeColors]);
-    const overviewTitle = selectedArchetypeDisplay
-        ? `${selectedArchetypeDisplay.mainName}${selectedArchetypeDisplay.subtypeName ? ` (${selectedArchetypeDisplay.subtypeName})` : ''}`
-        : 'Overview';
+    const overviewTitle = selectedArchetypeDisplay ? selectedArchetypeDisplay.displayName : 'Overview';
 
     const previewTraitStats = React.useMemo<Record<string, TraitStatistics>>(() => {
         if (traitStats) {

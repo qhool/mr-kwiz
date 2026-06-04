@@ -490,6 +490,7 @@ const QuizPreviewPage: React.FC = () => {
                     ) : null}
                     {!isLoading && definition && selectedScreen.type === 'results' ? (
                         <QuizResultsScreen
+                            archetypeNameTemplate={definition.display_config.archetype_name_template}
                             completionMarkdown={definition.display_config.completion_markdown}
                             scaleMax={scaleMax}
                             scaleMin={scaleMin}

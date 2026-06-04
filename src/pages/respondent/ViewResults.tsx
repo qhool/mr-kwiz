@@ -88,6 +88,7 @@ export default function ViewResultsPage() {
             {/* Results displayed in read-only mode */}
             <div style={{ margin: '0 auto', maxWidth: 980, padding: '2rem' }}>
                 <QuizResultsScreen
+                    archetypeNameTemplate={definition.display_config.archetype_name_template}
                     completionMarkdown={definition.display_config.completion_markdown}
                     eyebrow="Shared Results"
                     scaleMax={definition.display_config.result_scale_max ?? 1}

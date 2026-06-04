@@ -206,10 +206,17 @@ export const displayConfigSchema = z
         result_scale_max: z.number().optional().meta({ description: 'Optional upper bound for result display scaling.' }),
         trait_polarity: z.enum(['bidirectional', 'unidirectional']).default('bidirectional').meta({ description: 'Whether traits display as bidirectional scales (centered) or unidirectional (0 to max).' }),
         archetypes: z.array(archetypeSchema).default([]).meta({ description: 'Ordered archetype and subtype definitions used for result classification.' }),
+        archetype_name_template: z.string().min(1).optional().meta({ description: 'Optional Mustache template for combining matched main and subtype archetype names. Available placeholders: {{main}}, {{sub}}, {{main_archetype_name}}, and {{sub_archetype_name}}.' }),
         theme_colors: themeColorsSchema.optional().meta({ description: 'Optional respondent UI theme color overrides.' }),
     })
     .meta({
         description: 'Display-oriented configuration for quiz presentation.',
+        docs: {
+            notes: [
+                'When a main archetype and subtype both match, archetype_name_template renders the combined result name with Mustache. If omitted, the display falls back to "Main (Subtype)".',
+                'The template is ignored for main-only results, which display the main archetype name.',
+            ],
+        },
     });
 
 export const questionSchema = z

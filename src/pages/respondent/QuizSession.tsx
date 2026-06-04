@@ -454,6 +454,7 @@ const QuizSessionPage: React.FC = () => {
                 {!isLoading && definition && session && showResults && scoreSummary ? (
                     <>
                         <QuizResultsScreen
+                            archetypeNameTemplate={definition.display_config.archetype_name_template}
                             completionMarkdown={definition.display_config.completion_markdown}
                             eyebrow="Your Results"
                             scaleMax={definition.display_config.result_scale_max ?? 1}
