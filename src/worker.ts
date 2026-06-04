@@ -106,6 +106,24 @@ export default {
             return routedResponse;
         }
 
-        return env.ASSETS?.fetch(request) ?? fetch(request);
+        try {
+            if (env.ASSETS?.fetch) {
+                return await env.ASSETS.fetch(request);
+            }
+
+            return await fetch(request);
+        } catch (error) {
+            const { pathname } = new URL(request.url);
+            console.error('Asset fetch failed', {
+                error: error instanceof Error ? error.message : String(error),
+                pathname,
+                url: request.url,
+            });
+
+            return new Response('Unable to load this resource right now.', {
+                status: 502,
+                statusText: 'Asset Fetch Failed',
+            });
+        }
     },
 };

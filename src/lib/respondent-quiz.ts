@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 import { resultSharingModeSchema } from './admin-invitations';
-import type { Archetype, AdaptiveSelectionConfig, Question, QuizDefinition, Trait } from './quiz-definition';
+import { themeColorsSchema, type Archetype, type AdaptiveSelectionConfig, type Question, type QuizDefinition, type Trait } from './quiz-definition';
 
 const RESPONDENT_STORAGE_KEY = 'mrkwiz.respondentSessions.v1';
 const ADMIN_STORAGE_KEY = 'mrkwiz.adminTokens.v1';
@@ -41,6 +41,7 @@ export const respondentInvitationPickupSchema = z.object({
         description: z.string(),
         id: z.string().uuid(),
         intro_markdown: z.string().optional().default(''),
+        theme_colors: themeColorsSchema.optional(),
         title: z.string().min(1),
     }),
 });

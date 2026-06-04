@@ -11,6 +11,7 @@ import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
 import { quizDefinitionSchema, quizEditPatchSchema, type Question, type QuizDefinition } from '../../lib/quiz-definition';
 import { selectArchetype, type TraitStatistics } from '../../lib/respondent-quiz';
+import { deriveThemeUiColors, resolveThemeColors } from '../../lib/theme-colors';
 
 type AdminQuizResponse = {
     quiz: {
@@ -27,11 +28,11 @@ type PreviewScreen =
     | { type: 'questions' }
     | { type: 'results' };
 
-const screenButtonStyle = (isActive: boolean): React.CSSProperties => ({
-    background: isActive ? '#6a5032' : 'rgba(255, 250, 240, 0.82)',
-    border: isActive ? '1px solid #6a5032' : '1px solid #c8bfa9',
+const screenButtonStyle = (isActive: boolean, accent: string, accentText: string, panelBackground: string, panelBorder: string, bodyText: string): React.CSSProperties => ({
+    background: isActive ? accent : panelBackground,
+    border: `1px solid ${isActive ? accent : panelBorder}`,
     borderRadius: 14,
-    color: isActive ? '#f6f0df' : '#3f3220',
+    color: isActive ? accentText : bodyText,
     cursor: 'pointer',
     display: 'block',
     fontSize: '0.95rem',
@@ -82,6 +83,8 @@ const QuizPreviewPage: React.FC = () => {
     const [isPatchBoxOpen, setIsPatchBoxOpen] = React.useState(false);
     const [isSubmittingPatch, setIsSubmittingPatch] = React.useState(false);
     const [message, setMessage] = React.useState<string | null>(null);
+    const colors = React.useMemo(() => resolveThemeColors(definition?.display_config.theme_colors), [definition?.display_config.theme_colors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
 
     React.useEffect(() => {
         if (!definition) {
@@ -221,7 +224,7 @@ const QuizPreviewPage: React.FC = () => {
     };
 
     return (
-        <AdminShell adminKey={adminKey} currentPage="preview" metadata={metadata}>
+        <AdminShell adminKey={adminKey} currentPage="preview" metadata={metadata} themeColors={definition?.display_config.theme_colors}>
             <header style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.9rem', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                 <div>
                     <h1 style={{ marginBottom: '0.35rem' }}>Quiz Preview</h1>
@@ -239,10 +242,10 @@ const QuizPreviewPage: React.FC = () => {
                             setIsPatchBoxOpen((current) => !current);
                         }}
                         style={{
-                            background: isPatchBoxOpen ? '#4d3b22' : '#6a5032',
+                            background: isPatchBoxOpen ? colors.body_text : colors.accent,
                             border: 'none',
                             borderRadius: 999,
-                            color: '#f6f0df',
+                            color: colors.accent_text,
                             cursor: 'pointer',
                             padding: '0.7rem 1.15rem',
                         }}
@@ -256,9 +259,9 @@ const QuizPreviewPage: React.FC = () => {
             {error ? (
                 <div
                     style={{
-                        background: '#fbe9e7',
-                        border: '1px solid #d86b47',
-                        color: '#6f2412',
+                        background: ui.danger_background,
+                        border: `1px solid ${ui.danger_border}`,
+                        color: ui.danger_text,
                         marginBottom: '1rem',
                         padding: '0.75rem 1rem',
                         whiteSpace: 'pre-wrap',
@@ -271,9 +274,9 @@ const QuizPreviewPage: React.FC = () => {
             {message ? (
                 <div
                     style={{
-                        background: '#edf7ed',
-                        border: '1px solid #5a8f5a',
-                        color: '#1f4f1f',
+                        background: ui.success_background,
+                        border: `1px solid ${ui.success_border}`,
+                        color: ui.success_text,
                         marginBottom: '1rem',
                         padding: '0.75rem 1rem',
                     }}
@@ -285,8 +288,8 @@ const QuizPreviewPage: React.FC = () => {
             {isPatchBoxOpen ? (
                 <section
                     style={{
-                        background: 'rgba(255, 250, 240, 0.9)',
-                        border: '1px solid #c8bfa9',
+                        background: colors.panel_background,
+                        border: `1px solid ${colors.panel_border}`,
                         borderRadius: 18,
                         marginBottom: '1.5rem',
                         padding: '1rem',
@@ -295,7 +298,7 @@ const QuizPreviewPage: React.FC = () => {
                     <div style={{ alignItems: 'center', display: 'flex', gap: '0.75rem', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
                         <div>
                             <h2 style={{ fontSize: '1rem', margin: 0 }}>Paste Patch</h2>
-                            <p style={{ color: '#5d4b30', margin: '0.35rem 0 0' }}>
+                            <p style={{ color: colors.muted_text, margin: '0.35rem 0 0' }}>
                                 Paste a patch returned from chat. Fenced JSON blocks are accepted.
                             </p>
                         </div>
@@ -303,9 +306,9 @@ const QuizPreviewPage: React.FC = () => {
                             onClick={() => setIsPatchBoxOpen(false)}
                             style={{
                                 background: 'transparent',
-                                border: '1px solid #b7ab91',
+                                border: `1px solid ${colors.panel_border}`,
                                 borderRadius: 999,
-                                color: '#4a3922',
+                                color: colors.body_text,
                                 cursor: 'pointer',
                                 padding: '0.55rem 0.9rem',
                             }}
@@ -334,7 +337,7 @@ const QuizPreviewPage: React.FC = () => {
                             )}
                             spellCheck={false}
                             style={{
-                                border: '1px solid #c8bfa9',
+                                border: `1px solid ${colors.panel_border}`,
                                 borderRadius: 12,
                                 fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
                                 fontSize: '0.95rem',
@@ -349,10 +352,10 @@ const QuizPreviewPage: React.FC = () => {
                             <button
                                 disabled={isLoading || isSubmittingPatch || patchText.trim().length === 0}
                                 style={{
-                                    background: '#30291f',
+                                    background: colors.body_text,
                                     border: 'none',
                                     borderRadius: 999,
-                                    color: '#f6f0df',
+                                    color: colors.accent_text,
                                     cursor: 'pointer',
                                     padding: '0.75rem 1.25rem',
                                 }}
@@ -364,10 +367,10 @@ const QuizPreviewPage: React.FC = () => {
                                 disabled={isSubmittingPatch}
                                 onClick={() => setIsPatchBoxOpen(false)}
                                 style={{
-                                    background: '#e9dfc8',
-                                    border: '1px solid #b7ab91',
+                                    background: colors.page_background,
+                                    border: `1px solid ${colors.panel_border}`,
                                     borderRadius: 999,
-                                    color: '#4a3922',
+                                    color: colors.body_text,
                                     cursor: 'pointer',
                                     padding: '0.75rem 1.25rem',
                                 }}
@@ -384,21 +387,21 @@ const QuizPreviewPage: React.FC = () => {
                 <aside>
                     <div
                         style={{
-                            background: 'rgba(255, 250, 240, 0.82)',
-                            border: '1px solid #c8bfa9',
+                            background: colors.panel_background,
+                            border: `1px solid ${colors.panel_border}`,
                             borderRadius: 18,
                             padding: '1rem',
                         }}
                     >
                         <h2 style={{ fontSize: '1rem', margin: '0 0 0.85rem' }}>Preview Screens</h2>
                         <div style={{ display: 'grid', gap: '0.65rem' }}>
-                            <button onClick={() => setSelectedScreen({ type: 'intro' })} style={screenButtonStyle(selectedScreen.type === 'intro')} type="button">
+                            <button onClick={() => setSelectedScreen({ type: 'intro' })} style={screenButtonStyle(selectedScreen.type === 'intro', colors.accent, colors.accent_text, colors.page_background, colors.panel_border, colors.body_text)} type="button">
                                 Intro
                             </button>
-                            <button onClick={() => setSelectedScreen({ type: 'questions' })} style={screenButtonStyle(selectedScreen.type === 'questions')} type="button">
+                            <button onClick={() => setSelectedScreen({ type: 'questions' })} style={screenButtonStyle(selectedScreen.type === 'questions', colors.accent, colors.accent_text, colors.page_background, colors.panel_border, colors.body_text)} type="button">
                                 Questions
                             </button>
-                            <button onClick={() => setSelectedScreen({ type: 'results' })} style={screenButtonStyle(selectedScreen.type === 'results')} type="button">
+                            <button onClick={() => setSelectedScreen({ type: 'results' })} style={screenButtonStyle(selectedScreen.type === 'results', colors.accent, colors.accent_text, colors.page_background, colors.panel_border, colors.body_text)} type="button">
                                 Results
                             </button>
                         </div>
@@ -406,8 +409,8 @@ const QuizPreviewPage: React.FC = () => {
 
                     <div
                         style={{
-                            background: 'rgba(255, 250, 240, 0.82)',
-                            border: '1px solid #c8bfa9',
+                            background: colors.panel_background,
+                            border: `1px solid ${colors.panel_border}`,
                             borderRadius: 18,
                             marginTop: '1rem',
                             padding: '1rem',
@@ -418,10 +421,10 @@ const QuizPreviewPage: React.FC = () => {
                             definition.traits.length > 0 ? (
                                 <div style={{ display: 'grid', gap: '0.8rem' }}>
                                     {definition.traits.map((trait) => (
-                                        <div key={trait.id} style={{ background: '#f7f3e9', border: '1px solid #c8bfa9', borderRadius: 12, display: 'grid', gap: '0.5rem', padding: '0.65rem 0.75rem' }}>
-                                            <span style={{ color: '#3f3120', fontSize: '0.95rem', fontWeight: 700 }}>{trait.label}</span>
+                                        <div key={trait.id} style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 12, display: 'grid', gap: '0.5rem', padding: '0.65rem 0.75rem' }}>
+                                            <span style={{ color: colors.body_text, fontSize: '0.95rem', fontWeight: 700 }}>{trait.label}</span>
                                             <label style={{ display: 'grid', gap: '0.3rem' }}>
-                                                <span style={{ color: '#4e3d24', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Estimate</span>
+                                                <span style={{ color: colors.body_text, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Estimate</span>
                                                 <input
                                                     max={scaleMax}
                                                     min={scaleMin}
@@ -433,10 +436,10 @@ const QuizPreviewPage: React.FC = () => {
                                                     type="range"
                                                     value={previewScores[trait.id] ?? (scaleMin + scaleMax) / 2}
                                                 />
-                                                <span style={{ color: '#5a4a2f', fontSize: '0.82rem' }}>Value: {(previewScores[trait.id] ?? (scaleMin + scaleMax) / 2).toFixed(2)}</span>
+                                                <span style={{ color: colors.muted_text, fontSize: '0.82rem' }}>Value: {(previewScores[trait.id] ?? (scaleMin + scaleMax) / 2).toFixed(2)}</span>
                                             </label>
                                             <label style={{ display: 'grid', gap: '0.3rem' }}>
-                                                <span style={{ color: '#4e3d24', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Uncertainty Scale</span>
+                                                <span style={{ color: colors.body_text, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.02em' }}>Uncertainty Scale</span>
                                                 <input
                                                     max={1}
                                                     min={0}
@@ -448,7 +451,7 @@ const QuizPreviewPage: React.FC = () => {
                                                     type="range"
                                                     value={previewUncertainty[trait.id] ?? 0.25}
                                                 />
-                                                <span style={{ color: '#5a4a2f', fontSize: '0.82rem' }}>
+                                                <span style={{ color: colors.muted_text, fontSize: '0.82rem' }}>
                                                     Control: {(previewUncertainty[trait.id] ?? 0.25).toFixed(2)} · Spread: {(previewTraitStats[trait.id]?.spread ?? 0).toFixed(2)}
                                                 </span>
                                             </label>
@@ -456,10 +459,10 @@ const QuizPreviewPage: React.FC = () => {
                                     ))}
                                 </div>
                             ) : (
-                                <div style={{ color: '#6b5734' }}>Define traits before previewing results scores.</div>
+                                <div style={{ color: colors.muted_text }}>Define traits before previewing results scores.</div>
                             )
                         ) : (
-                            <div style={{ color: '#6b5734' }}>Select the Results screen to adjust preview scores.</div>
+                            <div style={{ color: colors.muted_text }}>Select the Results screen to adjust preview scores.</div>
                         )}
                     </div>
                 </aside>
@@ -468,8 +471,8 @@ const QuizPreviewPage: React.FC = () => {
                     {isLoading || !definition ? (
                         <div
                             style={{
-                                background: 'rgba(255, 250, 240, 0.82)',
-                                border: '1px solid #c8bfa9',
+                                background: colors.panel_background,
+                                border: `1px solid ${colors.panel_border}`,
                                 borderRadius: 18,
                                 padding: '1.5rem',
                             }}
@@ -478,7 +481,7 @@ const QuizPreviewPage: React.FC = () => {
                         </div>
                     ) : null}
 
-                    {!isLoading && definition && selectedScreen.type === 'intro' ? <QuizIntroScreen definition={definition} /> : null}
+                    {!isLoading && definition && selectedScreen.type === 'intro' ? <QuizIntroScreen definition={definition} themeColors={definition.display_config.theme_colors} /> : null}
                     {!isLoading && definition && selectedScreen.type === 'questions' ? (
                         <AdminPreviewQuestionsPanel
                             definition={definition}
@@ -495,6 +498,7 @@ const QuizPreviewPage: React.FC = () => {
                             traitPolarity={definition.display_config.trait_polarity}
                             traitStats={previewTraitStats}
                             traits={definition.traits}
+                            themeColors={definition.display_config.theme_colors}
                         />
                     ) : null}
                 </main>

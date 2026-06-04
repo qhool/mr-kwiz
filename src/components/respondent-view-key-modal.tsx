@@ -1,23 +1,25 @@
 import React from 'react';
 
+import type { ThemeColors } from '../lib/quiz-definition';
+import { deriveThemeUiColors, resolveThemeColors } from '../lib/theme-colors';
 import { buildViewUrl, getViewKeyStatus, listResponseViewKeysResponseSchema, responseViewKeySchema, type ResponseViewKey } from '../lib/view-keys';
 
-const panelStyle: React.CSSProperties = {
-    background: '#fffaf1',
-    border: '1px solid #c8bfa9',
+const panelStyle = (background: string, borderColor: string): React.CSSProperties => ({
+    background,
+    border: `1px solid ${borderColor}`,
     borderRadius: 20,
     boxShadow: '0 24px 80px rgba(35, 26, 14, 0.24)',
     maxHeight: '88vh',
     overflow: 'hidden',
     width: 'min(980px, calc(100vw - 2rem))',
-};
+});
 
-const fieldStyle: React.CSSProperties = {
-    border: '1px solid #c8bfa9',
+const fieldStyle = (borderColor: string): React.CSSProperties => ({
+    border: `1px solid ${borderColor}`,
     borderRadius: 12,
     padding: '0.75rem 0.85rem',
     width: '100%',
-};
+});
 
 type ViewKeyEditorItem = {
     created_at: string;
@@ -45,6 +47,7 @@ type RespondentViewKeyModalProps = {
     isOpen: boolean;
     onClose: () => void;
     responseKey: string;
+    themeColors?: ThemeColors;
 };
 
 const makeDraftItem = (): ViewKeyEditorItem => ({
@@ -127,11 +130,11 @@ const formatStatus = (item: ViewKeyEditorItem): string => {
     return 'Expired';
 };
 
-const statusStyle = (item: ViewKeyEditorItem): React.CSSProperties => {
+const statusStyle = (item: ViewKeyEditorItem, accent: string): React.CSSProperties => {
     const status = item.is_new ? 'draft' : getViewKeyStatus({ expires_at: item.expires_at, revoked_at: item.revoked_at });
     const palette = {
         active: { background: '#e5f4df', border: '#84ad6a', color: '#20481f' },
-        draft: { background: '#eef2fb', border: '#8ba0d8', color: '#1e3165' },
+        draft: { background: 'rgba(232, 244, 248, 0.9)', border: accent, color: '#1e3165' },
         expired: { background: '#ece9e2', border: '#aaa08c', color: '#554c3c' },
         revoked: { background: '#f4e4dc', border: '#c48b70', color: '#6c2b17' },
     }[status as 'active' | 'draft' | 'expired' | 'revoked'];
@@ -148,12 +151,14 @@ const statusStyle = (item: ViewKeyEditorItem): React.CSSProperties => {
     };
 };
 
-export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ isOpen, onClose, responseKey }) => {
+export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ isOpen, onClose, responseKey, themeColors }) => {
     const [items, setItems] = React.useState<ViewKeyEditorItem[]>([]);
     const [isLoading, setIsLoading] = React.useState(false);
     const [copyMessage, setCopyMessage] = React.useState<string | null>(null);
     const [error, setError] = React.useState<string | null>(null);
     const itemsRef = React.useRef<ViewKeyEditorItem[]>([]);
+    const colors = React.useMemo(() => resolveThemeColors(themeColors), [themeColors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
 
     React.useEffect(() => {
         itemsRef.current = items;
@@ -344,7 +349,7 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
             role="dialog"
             style={{
                 alignItems: 'center',
-                background: 'rgba(28, 18, 8, 0.58)',
+                background: 'rgba(20, 20, 20, 0.55)',
                 display: 'flex',
                 inset: 0,
                 justifyContent: 'center',
@@ -353,41 +358,41 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
                 zIndex: 60,
             }}
         >
-            <div onClick={(event) => event.stopPropagation()} style={panelStyle}>
+            <div onClick={(event) => event.stopPropagation()} style={panelStyle(colors.panel_background, colors.panel_border)}>
                 <div style={{ alignItems: 'flex-start', display: 'flex', justifyContent: 'space-between', gap: '1rem', padding: '1.25rem 1.25rem 1rem' }}>
                     <div>
-                        <h2 style={{ margin: 0 }}>Share Results</h2>
-                        <p style={{ color: '#5d4b30', margin: '0.35rem 0 0' }}>
+                        <h2 style={{ color: colors.heading_text, margin: 0 }}>Share Results</h2>
+                        <p style={{ color: colors.muted_text, margin: '0.35rem 0 0' }}>
                             Manage saved links, configure their labels, notes, and expiry, then copy the link when ready.
                         </p>
                     </div>
                     <button
                         onClick={onClose}
-                        style={{ background: 'transparent', border: '1px solid #b7ab91', borderRadius: 999, color: '#4a3922', cursor: 'pointer', padding: '0.55rem 0.9rem' }}
+                        style={{ background: 'transparent', border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: 'pointer', padding: '0.55rem 0.9rem' }}
                         type="button"
                     >
                         Close
                     </button>
                 </div>
 
-                <div style={{ borderTop: '1px solid #d9ceb8', maxHeight: 'calc(88vh - 88px)', overflowY: 'auto', padding: '1rem 1.25rem 1.25rem' }}>
+                <div style={{ borderTop: `1px solid ${colors.panel_border}`, maxHeight: 'calc(88vh - 88px)', overflowY: 'auto', padding: '1rem 1.25rem 1.25rem' }}>
                     {error ? (
-                        <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', borderRadius: 16, color: '#6f2412', marginBottom: '0.9rem', padding: '0.85rem 1rem', whiteSpace: 'pre-wrap' }}>
+                        <div style={{ background: ui.danger_background, border: `1px solid ${ui.danger_border}`, borderRadius: 16, color: ui.danger_text, marginBottom: '0.9rem', padding: '0.85rem 1rem', whiteSpace: 'pre-wrap' }}>
                             {error}
                         </div>
                     ) : null}
 
                     {copyMessage ? (
-                        <div style={{ background: '#edf7ed', border: '1px solid #5a8f5a', borderRadius: 16, color: '#1f4f1f', marginBottom: '0.9rem', padding: '0.85rem 1rem' }}>
+                        <div style={{ background: ui.success_background, border: `1px solid ${ui.success_border}`, borderRadius: 16, color: ui.success_text, marginBottom: '0.9rem', padding: '0.85rem 1rem' }}>
                             {copyMessage}
                         </div>
                     ) : null}
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '1rem' }}>
-                        <div style={{ color: '#5d4b30' }}>{isLoading ? 'Loading saved links...' : 'Edit a link, blur a field to save, or copy a link to save and copy it at once.'}</div>
+                        <div style={{ color: colors.muted_text }}>{isLoading ? 'Loading saved links...' : 'Edit a link, blur a field to save, or copy a link to save and copy it at once.'}</div>
                         <button
                             onClick={handleAddLink}
-                            style={{ background: '#e9dfc8', border: '1px solid #b7ab91', borderRadius: 999, color: '#4a3922', cursor: 'pointer', padding: '0.7rem 1rem' }}
+                            style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: 'pointer', padding: '0.7rem 1rem' }}
                             type="button"
                         >
                             Add Another Link
@@ -400,48 +405,48 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
                             const canCopy = !item.is_new && item.view_key.length > 0 && getViewKeyStatus({ expires_at: item.expires_at, revoked_at: item.revoked_at }) === 'active';
 
                             return (
-                                <article key={item.local_id} style={{ background: '#fffdf8', border: '1px solid #d7ccb4', borderRadius: 18, display: 'grid', gap: '0.9rem', padding: '1rem' }}>
+                                <article key={item.local_id} style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 18, display: 'grid', gap: '0.9rem', padding: '1rem' }}>
                                     <div style={{ alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'space-between' }}>
                                         <div>
                                             <div style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.25rem' }}>
                                                 {item.label.trim().length > 0 ? item.label : item.is_new ? 'New share link draft' : `Share link ${item.view_key.slice(0, 8)}`}
                                             </div>
-                                            <div style={{ color: '#6b5734', fontSize: '0.88rem' }}>
+                                            <div style={{ color: colors.muted_text, fontSize: '0.88rem' }}>
                                                 {item.is_new ? 'Not saved yet' : `Created ${formatDate(item.created_at)}`}
                                             </div>
                                         </div>
-                                        <span style={statusStyle(item)}>{status}</span>
+                                        <span style={statusStyle(item, colors.accent)}>{status}</span>
                                     </div>
 
                                     {item.error ? (
-                                        <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', borderRadius: 14, color: '#6f2412', padding: '0.75rem 0.9rem' }}>
+                                        <div style={{ background: ui.danger_background, border: `1px solid ${ui.danger_border}`, borderRadius: 14, color: ui.danger_text, padding: '0.75rem 0.9rem' }}>
                                             {item.error}
                                         </div>
                                     ) : null}
 
                                     <div style={{ display: 'grid', gap: '0.8rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                                         <label style={{ display: 'grid', gap: '0.3rem' }}>
-                                            <span style={{ color: '#4e3d24', fontSize: '0.88rem', fontWeight: 700 }}>Label</span>
+                                            <span style={{ color: colors.body_text, fontSize: '0.88rem', fontWeight: 700 }}>Label</span>
                                             <input
                                                 onBlur={() => {
                                                     void handleFieldBlur(item.local_id);
                                                 }}
                                                 onChange={(event) => handleFieldChange(item.local_id, 'label', event.target.value)}
                                                 placeholder="Optional label"
-                                                style={fieldStyle}
+                                                style={fieldStyle(colors.panel_border)}
                                                 type="text"
                                                 value={item.label}
                                             />
                                         </label>
 
                                         <label style={{ display: 'grid', gap: '0.3rem' }}>
-                                            <span style={{ color: '#4e3d24', fontSize: '0.88rem', fontWeight: 700 }}>Expiry</span>
+                                            <span style={{ color: colors.body_text, fontSize: '0.88rem', fontWeight: 700 }}>Expiry</span>
                                             <input
                                                 onBlur={() => {
                                                     void handleFieldBlur(item.local_id);
                                                 }}
                                                 onChange={(event) => handleFieldChange(item.local_id, 'expires_at', event.target.value)}
-                                                style={fieldStyle}
+                                                style={fieldStyle(colors.panel_border)}
                                                 type="datetime-local"
                                                 value={toDateTimeLocalValue(item.expires_at)}
                                             />
@@ -449,27 +454,27 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
                                     </div>
 
                                     <label style={{ display: 'grid', gap: '0.3rem' }}>
-                                        <span style={{ color: '#4e3d24', fontSize: '0.88rem', fontWeight: 700 }}>Notes</span>
+                                        <span style={{ color: colors.body_text, fontSize: '0.88rem', fontWeight: 700 }}>Notes</span>
                                         <textarea
                                             onBlur={() => {
                                                 void handleFieldBlur(item.local_id);
                                             }}
                                             onChange={(event) => handleFieldChange(item.local_id, 'notes', event.target.value)}
                                             placeholder="Optional notes"
-                                            style={{ ...fieldStyle, minHeight: 92, resize: 'vertical' }}
+                                            style={{ ...fieldStyle(colors.panel_border), minHeight: 92, resize: 'vertical' }}
                                             value={item.notes}
                                         />
                                     </label>
 
                                     <div style={{ display: 'grid', gap: '0.4rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
                                         <div>
-                                            <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>View URL</div>
+                                            <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>View URL</div>
                                             <div style={{ fontSize: '0.92rem', overflowWrap: 'anywhere' }}>
                                                 {item.view_key ? buildViewUrl(item.view_key, window.location.origin) : 'Will be created on first save or copy'}
                                             </div>
                                         </div>
                                         <div>
-                                            <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Last viewed</div>
+                                            <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Last viewed</div>
                                             <div style={{ fontSize: '0.92rem' }}>{formatDate(item.last_viewed_at)}</div>
                                         </div>
                                     </div>
@@ -480,7 +485,7 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
                                             onClick={() => {
                                                 void handleCopyLink(item.local_id);
                                             }}
-                                            style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: item.is_saving ? 'not-allowed' : 'pointer', opacity: item.is_saving ? 0.75 : 1, padding: '0.75rem 1.1rem' }}
+                                            style={{ background: colors.accent, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: item.is_saving ? 'not-allowed' : 'pointer', opacity: item.is_saving ? 0.75 : 1, padding: '0.75rem 1.1rem' }}
                                             type="button"
                                         >
                                             {item.is_saving ? 'Saving…' : canCopy ? 'Copy Link' : 'Save & Copy Link'}
@@ -491,7 +496,7 @@ export const RespondentViewKeyModal: React.FC<RespondentViewKeyModalProps> = ({ 
                                             onClick={() => {
                                                 void handleDeactivate(item.local_id);
                                             }}
-                                            style={{ background: '#e9dfc8', border: '1px solid #b7ab91', borderRadius: 999, color: '#4a3922', cursor: item.is_saving ? 'not-allowed' : 'pointer', opacity: item.is_saving ? 0.75 : 1, padding: '0.75rem 1.1rem' }}
+                                            style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: item.is_saving ? 'not-allowed' : 'pointer', opacity: item.is_saving ? 0.75 : 1, padding: '0.75rem 1.1rem' }}
                                             type="button"
                                         >
                                             {getViewKeyStatus({ expires_at: item.expires_at, revoked_at: item.revoked_at }) === 'revoked' ? 'Revoked' : 'Revoke Link'}

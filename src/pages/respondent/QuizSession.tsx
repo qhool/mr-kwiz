@@ -28,6 +28,7 @@ import {
     listStoredRespondentSessions,
     touchStoredRespondentSession,
 } from '../../lib/respondent-quiz';
+import { resolveThemeColors } from '../../lib/theme-colors';
 
 const QuizSessionPage: React.FC = () => {
     const navigate = useNavigate();
@@ -239,6 +240,11 @@ const QuizSessionPage: React.FC = () => {
         navigate(`/quiz/${encodeURIComponent(nextResponseKey)}`);
     };
 
+    const resolvedTheme = React.useMemo(
+        () => resolveThemeColors(definition?.display_config.theme_colors),
+        [definition?.display_config.theme_colors]
+    );
+
     const handleAnswer = async (answerId: string) => {
         if (!currentQuestion) {
             return;
@@ -343,6 +349,7 @@ const QuizSessionPage: React.FC = () => {
         <RespondentShell
             currentResponseKey={responseKey}
             onSelectSession={handleSelectSession}
+            themeColors={resolvedTheme}
             quizTitle={session?.quiz.title ?? 'Loading quiz...'}
             sessions={storedSessions.length > 0 ? storedSessions : [{ last_interacted_at: new Date().toISOString(), quiz_title: session?.quiz.title ?? 'Current Quiz', response_key: responseKey, submitted_at: null }]}
         >
@@ -380,6 +387,7 @@ const QuizSessionPage: React.FC = () => {
                             question={currentQuestion}
                             questionCount={orderedQuestions.length}
                             questionIndex={Math.max(0, currentQuestionIndex)}
+                            themeColors={definition.display_config.theme_colors}
                         />
                         {(definition.question_ordering ?? 'ordered') === 'adaptive' ? (
                             <div style={{ marginTop: '0.75rem', textAlign: 'right' }}>
@@ -453,6 +461,7 @@ const QuizSessionPage: React.FC = () => {
                             scores={scoreSummary.scores}
                             selectedArchetype={scoreSummary.selectedArchetype}
                             subtitle="Your answered questions have been scored using the quiz's trait matrix."
+                            themeColors={definition.display_config.theme_colors}
                             title="Your Results"
                             traits={definition.traits}
                             traitStats={scoreSummary.traitStats}
@@ -464,10 +473,10 @@ const QuizSessionPage: React.FC = () => {
                                     setIsShareModalOpen(true);
                                 }}
                                 style={{
-                                    background: '#6a5032',
+                                    background: resolvedTheme.accent,
                                     border: 'none',
                                     borderRadius: 999,
-                                    color: '#f6f0df',
+                                    color: resolvedTheme.accent_text,
                                     cursor: 'pointer',
                                     padding: '0.85rem 1.4rem',
                                 }}
@@ -479,17 +488,17 @@ const QuizSessionPage: React.FC = () => {
                                 onClick={() => {
                                     void handleCopyAiPrompt();
                                 }}
-                                style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.85rem 1.4rem' }}
+                                style={{ background: resolvedTheme.accent, border: 'none', borderRadius: 999, color: resolvedTheme.accent_text, cursor: 'pointer', padding: '0.85rem 1.4rem' }}
                                 type="button"
                             >
                                 Ask AI about my results
                             </button>
                         </div>
-                        <RespondentAnswersPanel answers={session.answers} definition={definition} />
+                        <RespondentAnswersPanel answers={session.answers} definition={definition} themeColors={definition.display_config.theme_colors} />
                     </>
                 ) : null}
 
-                {isSubmittingAnswer ? <div style={{ color: '#6b5734', marginTop: '1rem' }}>Saving your answer...</div> : null}
+                {isSubmittingAnswer ? <div style={{ color: resolvedTheme.muted_text, marginTop: '1rem' }}>Saving your answer...</div> : null}
             </div>
 
             {session ? (
@@ -497,6 +506,7 @@ const QuizSessionPage: React.FC = () => {
                     isOpen={isShareModalOpen}
                     onClose={() => setIsShareModalOpen(false)}
                     responseKey={session.response.response_key}
+                    themeColors={definition?.display_config.theme_colors}
                 />
             ) : null}
         </RespondentShell>

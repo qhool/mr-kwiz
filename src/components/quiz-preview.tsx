@@ -2,8 +2,9 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 
 import { BidirectionalBarChart, SpiderChart, UnidirectionalBarChart } from './respondent-results-charts';
-import type { Question, QuizDefinition, Trait } from '../lib/quiz-definition';
+import type { Question, QuizDefinition, ThemeColors, Trait } from '../lib/quiz-definition';
 import { getSelectedArchetypeDisplay, type SelectedArchetypeInfo, type TraitStatistics } from '../lib/respondent-quiz';
+import { deriveThemeUiColors, resolveThemeColors } from '../lib/theme-colors';
 
 const markdownCardStyle: React.CSSProperties = {
     color: '#241d14',
@@ -54,26 +55,41 @@ const renderMarkdown = (markdown?: string) => {
 
 const defaultAdminIntroMarkdown = 'Configure traits before creating questions.';
 
-export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: string; subtitle?: string; title: string }>> = ({
+const useTheme = (themeColors?: ThemeColors) => {
+    const colors = React.useMemo(() => resolveThemeColors(themeColors), [themeColors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
+    return { colors, ui };
+};
+
+export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: string; subtitle?: string; themeColors?: ThemeColors; title: string }>> = ({
     children,
     eyebrow = 'Preview Surface',
     subtitle,
+    themeColors,
     title,
 }) => {
+    const { colors, ui } = useTheme(themeColors);
+
     return (
-        <section style={surfaceStyle}>
+        <section
+            style={{
+                ...surfaceStyle,
+                background: colors.panel_background,
+                border: `1px solid ${colors.panel_border}`,
+            }}
+        >
             <div
                 style={{
-                    background: 'linear-gradient(135deg, rgba(166, 154, 130, 0.2), rgba(225, 219, 203, 0.45))',
-                    borderBottom: '1px solid #c2b7a1',
+                    background: `linear-gradient(135deg, ${ui.accent_soft}, ${colors.page_background})`,
+                    borderBottom: `1px solid ${colors.panel_border}`,
                     padding: '1.6rem 2rem',
                 }}
             >
-                <p style={{ color: '#4a3b26', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
+                <p style={{ color: colors.muted_text, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
                     {eyebrow}
                 </p>
-                <h2 style={{ color: '#241d14', fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
-                {subtitle ? <p style={{ color: '#3e3222', margin: 0 }}>{subtitle}</p> : null}
+                <h2 style={{ color: colors.heading_text, fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
+                {subtitle ? <p style={{ color: colors.body_text, margin: 0 }}>{subtitle}</p> : null}
             </div>
             <div style={shellStyle}>{children}</div>
         </section>
@@ -91,11 +107,20 @@ export const QuizIntroScreen: React.FC<{
             : definition.display_config.intro_markdown;
 
     return (
-        <QuizPreviewSurface subtitle={definition.description || 'No description provided yet.'} title={definition.title}>
+        <QuizPreviewSurface subtitle={definition.description || 'No description provided yet.'} themeColors={definition.display_config.theme_colors} title={definition.title}>
             {introMarkdown ? (
                 renderMarkdown(introMarkdown)
             ) : (
-                <div style={emptyStateStyle}>{emptyStateMessage}</div>
+                <div
+                    style={{
+                        ...emptyStateStyle,
+                        background: resolveThemeColors(definition.display_config.theme_colors).page_background,
+                        border: `1px dashed ${resolveThemeColors(definition.display_config.theme_colors).panel_border}`,
+                        color: resolveThemeColors(definition.display_config.theme_colors).muted_text,
+                    }}
+                >
+                    {emptyStateMessage}
+                </div>
             )}
         </QuizPreviewSurface>
     );
@@ -113,6 +138,7 @@ export const QuizQuestionScreen: React.FC<{
     questionIndex: number;
     questionCount: number;
     selectedResponseId?: string | null;
+    themeColors?: ThemeColors;
 }> = ({
     eyebrow,
     onSelectResponse,
@@ -125,11 +151,14 @@ export const QuizQuestionScreen: React.FC<{
     questionCount,
     questionIndex,
     selectedResponseId,
+    themeColors,
 }) => {
+    const { colors, ui } = useTheme(themeColors);
+
     if (!question) {
         return (
-            <QuizPreviewSurface eyebrow={eyebrow} subtitle="Create at least one question to preview the participant experience." title="Question Preview">
-                <div style={emptyStateStyle}>No questions are defined yet.</div>
+            <QuizPreviewSurface eyebrow={eyebrow} subtitle="Create at least one question to preview the participant experience." themeColors={themeColors} title="Question Preview">
+                <div style={{ ...emptyStateStyle, background: colors.page_background, border: `1px dashed ${colors.panel_border}`, color: colors.muted_text }}>No questions are defined yet.</div>
             </QuizPreviewSurface>
         );
     }
@@ -138,13 +167,14 @@ export const QuizQuestionScreen: React.FC<{
         <QuizPreviewSurface
             eyebrow={eyebrow}
             subtitle={progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}
+            themeColors={themeColors}
             title={question.prompt}
         >
             <div style={{ marginBottom: '1rem' }}>
                 <div
                     aria-hidden
                     style={{
-                        background: '#e4dcc8',
+                        background: colors.page_background,
                         borderRadius: 999,
                         height: 10,
                         overflow: 'hidden',
@@ -153,7 +183,7 @@ export const QuizQuestionScreen: React.FC<{
                 >
                     <div
                         style={{
-                            background: 'linear-gradient(90deg, #7a5c37, #9b7c4f)',
+                            background: `linear-gradient(90deg, ${colors.accent}, ${colors.chart_band})`,
                             height: '100%',
                             transition: 'width 220ms ease',
                             width: `${Math.max(0, Math.min(100, progressPercent ?? 0))}%`,
@@ -165,7 +195,7 @@ export const QuizQuestionScreen: React.FC<{
                         <div
                             style={{
                                 alignItems: 'center',
-                                color: '#6a5032',
+                                color: colors.muted_text,
                                 display: 'inline-flex',
                                 fontSize: '0.88rem',
                                 gap: '0.35rem',
@@ -178,9 +208,9 @@ export const QuizQuestionScreen: React.FC<{
                                     aria-label={progressTooltip}
                                     role="img"
                                     style={{
-                                        background: '#d8cfbb',
+                                        background: colors.page_background,
                                         borderRadius: '50%',
-                                        color: '#4e3f29',
+                                        color: colors.body_text,
                                         cursor: 'help',
                                         display: 'inline-flex',
                                         fontSize: '0.7rem',
@@ -199,7 +229,7 @@ export const QuizQuestionScreen: React.FC<{
                     ) : null
                 ) : (
                     <>
-                        <div style={{ color: '#5a4a2f', display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.45rem' }}>
+                        <div style={{ color: colors.muted_text, display: 'flex', fontSize: '0.85rem', justifyContent: 'space-between', marginTop: '0.45rem' }}>
                             <span style={{ alignItems: 'center', display: 'inline-flex', gap: '0.35rem' }}>
                                 <span>{progressLabel ?? `Question ${questionIndex + 1} of ${questionCount}`}</span>
                                 {progressTooltip ? (
@@ -207,9 +237,9 @@ export const QuizQuestionScreen: React.FC<{
                                         aria-label={progressTooltip}
                                         role="img"
                                         style={{
-                                            background: '#d8cfbb',
+                                            background: colors.page_background,
                                             borderRadius: '50%',
-                                            color: '#4e3f29',
+                                            color: colors.body_text,
                                             cursor: 'help',
                                             display: 'inline-flex',
                                             fontSize: '0.7rem',
@@ -228,7 +258,7 @@ export const QuizQuestionScreen: React.FC<{
                             <span>{Math.round(Math.max(0, Math.min(100, progressPercent ?? 0)))}%</span>
                         </div>
                         {progressMessage ? (
-                            <div style={{ color: '#6a5032', fontSize: '0.88rem', marginTop: '0.35rem' }}>{progressMessage}</div>
+                            <div style={{ color: colors.muted_text, fontSize: '0.88rem', marginTop: '0.35rem' }}>{progressMessage}</div>
                         ) : null}
                     </>
                 )}
@@ -243,8 +273,10 @@ export const QuizQuestionScreen: React.FC<{
                             ...responseCardStyle,
                             border:
                                 selectedResponseId === response.id
-                                    ? '2px solid #8b6940'
-                                    : responseCardStyle.border,
+                                    ? `2px solid ${colors.accent}`
+                                    : `1px solid ${colors.panel_border}`,
+                            background: colors.panel_background,
+                            color: colors.body_text,
                             cursor: onSelectResponse ? 'pointer' : 'default',
                         }}
                     >
@@ -252,15 +284,15 @@ export const QuizQuestionScreen: React.FC<{
                             <div>
                                 <h3 style={{ fontSize: '1.05rem', margin: 0 }}>{response.label}</h3>
                                 {response.help_text ? (
-                                    <p style={{ color: '#4d3d28', margin: '0.35rem 0 0' }}>{response.help_text}</p>
+                                    <p style={{ color: colors.muted_text, margin: '0.35rem 0 0' }}>{response.help_text}</p>
                                 ) : null}
                             </div>
                             <div
                                 style={{
                                     alignItems: 'center',
-                                    background: '#e7dfcf',
+                                    background: ui.accent_soft,
                                     borderRadius: 999,
-                                    color: '#3e3222',
+                                    color: colors.body_text,
                                     display: 'inline-flex',
                                     fontSize: '0.8rem',
                                     fontWeight: 700,
@@ -289,14 +321,16 @@ export const QuizResultsScreen: React.FC<{
     selectedArchetype?: SelectedArchetypeInfo;
     subtitle?: string;
     title?: string;
+    themeColors?: ThemeColors;
     traits: Trait[];
     traitPolarity: 'bidirectional' | 'unidirectional';
     traitStats?: Record<string, TraitStatistics>;
-}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', traits, traitPolarity, traitStats }) => {
+}> = ({ completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', themeColors, traits, traitPolarity, traitStats }) => {
     const selectedArchetypeDisplay = React.useMemo(
         () => getSelectedArchetypeDisplay(selectedArchetype),
         [selectedArchetype]
     );
+    const resolvedTheme = React.useMemo(() => resolveThemeColors(themeColors), [themeColors]);
     const overviewTitle = selectedArchetypeDisplay
         ? `${selectedArchetypeDisplay.mainName}${selectedArchetypeDisplay.subtypeName ? ` (${selectedArchetypeDisplay.subtypeName})` : ''}`
         : 'Overview';
@@ -319,18 +353,31 @@ export const QuizResultsScreen: React.FC<{
     }, [scores, traitStats, traits]);
 
     return (
-        <QuizPreviewSurface eyebrow={eyebrow} subtitle={subtitle ?? 'Admin preview using simulated trait scores.'} title={title}>
+        <QuizPreviewSurface eyebrow={eyebrow} subtitle={subtitle ?? 'Admin preview using simulated trait scores.'} themeColors={themeColors} title={title}>
             {completionMarkdown ? <div style={{ marginBottom: '1.5rem' }}>{renderMarkdown(completionMarkdown)}</div> : null}
             {traits.length === 0 ? (
-                <div style={emptyStateStyle}>No traits are defined yet, so there is nothing meaningful to show in the results view.</div>
+                <div style={{ ...emptyStateStyle, background: resolvedTheme.page_background, border: `1px dashed ${resolvedTheme.panel_border}`, color: resolvedTheme.muted_text }}>
+                    No traits are defined yet, so there is nothing meaningful to show in the results view.
+                </div>
             ) : (
-                <div style={{ display: 'grid', gap: '2rem' }}>
+                <div
+                    style={{
+                        background: resolvedTheme.panel_background,
+                        border: `1px solid ${resolvedTheme.panel_border}`,
+                        borderRadius: 16,
+                        color: resolvedTheme.body_text,
+                        display: 'grid',
+                        gap: '2rem',
+                        padding: '1.25rem',
+                    }}
+                >
                     <div>
-                        <h3 style={{ marginTop: 0 }}>{overviewTitle}</h3>
+                        <h3 style={{ color: resolvedTheme.heading_text, marginTop: 0 }}>{overviewTitle}</h3>
                         <SpiderChart
                             polarity={traitPolarity}
                             scaleMin={scaleMin}
                             scaleMax={scaleMax}
+                            themeColors={resolvedTheme}
                             traits={traits}
                             traitStats={previewTraitStats}
                         />
@@ -341,6 +388,7 @@ export const QuizResultsScreen: React.FC<{
                                 polarity={traitPolarity}
                                 scaleMin={scaleMin}
                                 scaleMax={scaleMax}
+                                themeColors={resolvedTheme}
                                 traits={traits}
                                 traitStats={previewTraitStats}
                             />
@@ -349,6 +397,7 @@ export const QuizResultsScreen: React.FC<{
                                 polarity={traitPolarity}
                                 scaleMin={scaleMin}
                                 scaleMax={scaleMax}
+                                themeColors={resolvedTheme}
                                 traits={traits}
                                 traitStats={previewTraitStats}
                             />
@@ -356,9 +405,9 @@ export const QuizResultsScreen: React.FC<{
                     </div>
                     {selectedArchetypeDisplay ? (
                         <div style={{ display: 'grid', gap: '0.65rem' }}>
-                            <p style={{ color: '#352a1b', margin: 0 }}>{selectedArchetypeDisplay.mainDescription}</p>
+                            <p style={{ color: resolvedTheme.body_text, margin: 0 }}>{selectedArchetypeDisplay.mainDescription}</p>
                             {selectedArchetypeDisplay.subtypeDescription ? (
-                                <p style={{ color: '#3f3120', margin: 0 }}>{selectedArchetypeDisplay.subtypeDescription}</p>
+                                <p style={{ color: resolvedTheme.muted_text, margin: 0 }}>{selectedArchetypeDisplay.subtypeDescription}</p>
                             ) : null}
                         </div>
                     ) : null}

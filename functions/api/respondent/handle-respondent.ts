@@ -262,6 +262,9 @@ export const handleRespondentInvitationGet = async (
                     description: invitation.quizzes.description,
                     id: invitation.quizzes.id,
                     intro_markdown: definition.display_config.intro_markdown,
+                    ...(definition.display_config.theme_colors
+                        ? { theme_colors: definition.display_config.theme_colors }
+                        : {}),
                     title: invitation.quizzes.title,
                 },
             })

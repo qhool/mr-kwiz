@@ -2,6 +2,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useNavigate, useParams } from 'react-router-dom';
 
+import { resolveThemeColors } from '../../lib/theme-colors';
 import {
     markRespondentIntroSkipped,
     respondentInvitationPickupSchema,
@@ -10,22 +11,22 @@ import {
     saveStoredRespondentSession,
 } from '../../lib/respondent-quiz';
 
-const cardStyle: React.CSSProperties = {
-    background: 'rgba(255, 250, 240, 0.92)',
-    border: '1px solid #c8bfa9',
+const cardStyle = (panelBackground: string, panelBorder: string): React.CSSProperties => ({
+    background: panelBackground,
+    border: `1px solid ${panelBorder}`,
     borderRadius: 20,
     boxShadow: '0 18px 45px rgba(70, 54, 28, 0.08)',
     padding: '1.5rem',
-};
+});
 
-const startButtonStyle: React.CSSProperties = {
-    background: '#245a78',
+const startButtonStyle = (accent: string, accentText: string): React.CSSProperties => ({
+    background: accent,
     border: 'none',
     borderRadius: 999,
-    color: '#f6f0df',
+    color: accentText,
     cursor: 'pointer',
     padding: '1rem 2rem',
-};
+});
 
 const InvitationPickupPage: React.FC = () => {
     const navigate = useNavigate();
@@ -77,6 +78,7 @@ const InvitationPickupPage: React.FC = () => {
     const sharingMode = pickup?.invitation.result_sharing_mode ?? 'off';
     const sharebackName = pickup?.invitation.shareback_name.trim() || 'quiz owner';
     const invitationUrl = invitationKey ? `${window.location.origin}/invite/${invitationKey}` : '';
+    const colors = React.useMemo(() => resolveThemeColors(pickup?.quiz.theme_colors), [pickup?.quiz.theme_colors]);
 
     const handleCopyQuizLink = async () => {
         if (!invitationUrl) {
@@ -140,33 +142,33 @@ const InvitationPickupPage: React.FC = () => {
     };
 
     return (
-        <div style={{ margin: '0 auto', maxWidth: 980, padding: '2.5rem 1.5rem 3rem' }}>
-            <div style={{ background: 'linear-gradient(135deg, rgba(231, 223, 207, 0.95), rgba(248, 247, 243, 0.95))', border: '1px solid #c8bfa9', borderRadius: 24, boxShadow: '0 18px 45px rgba(70, 54, 28, 0.08)', padding: '2rem' }}>
-                <div style={{ color: '#6b5734', fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Mr. Kwiz Quiz Invitation</div>
-                <h1 style={{ color: '#241d14', fontSize: '2.6rem', lineHeight: 1.08, margin: '0.4rem 0 0.35rem' }}>{pickup?.quiz.title ?? 'Preparing your quiz...'}</h1>
-                <p style={{ color: '#4d3d28', fontSize: '1.08rem', lineHeight: 1.7, margin: 0, maxWidth: 760 }}>{pickup?.quiz.description || 'Start when you are ready.'}</p>
+        <div style={{ background: colors.page_background, margin: '0 auto', maxWidth: 980, minHeight: '100vh', padding: '2.5rem 1.5rem 3rem' }}>
+            <div style={{ background: colors.panel_background, border: `1px solid ${colors.panel_border}`, borderRadius: 24, boxShadow: '0 18px 45px rgba(70, 54, 28, 0.08)', padding: '2rem' }}>
+                <div style={{ color: colors.muted_text, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Mr. Kwiz Quiz Invitation</div>
+                <h1 style={{ color: colors.heading_text, fontSize: '2.6rem', lineHeight: 1.08, margin: '0.4rem 0 0.35rem' }}>{pickup?.quiz.title ?? 'Preparing your quiz...'}</h1>
+                <p style={{ color: colors.body_text, fontSize: '1.08rem', lineHeight: 1.7, margin: 0, maxWidth: 760 }}>{pickup?.quiz.description || 'Start when you are ready.'}</p>
 
                 {pickup?.quiz.intro_markdown?.trim().length ? (
-                    <div style={{ color: '#342c20', lineHeight: 1.7, marginTop: '1rem', maxWidth: 820 }}>
+                    <div style={{ color: colors.body_text, lineHeight: 1.7, marginTop: '1rem', maxWidth: 820 }}>
                         <ReactMarkdown>{pickup.quiz.intro_markdown}</ReactMarkdown>
                     </div>
                 ) : null}
 
                 {error ? <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', color: '#6f2412', marginTop: '1rem', padding: '0.9rem 1rem', whiteSpace: 'pre-wrap' }}>{error}</div> : null}
                 {copyMessage ? <div style={{ background: '#edf7ed', border: '1px solid #5a8f5a', color: '#1f4f1f', marginTop: '1rem', padding: '0.9rem 1rem' }}>{copyMessage}</div> : null}
-                {isLoading ? <div style={{ marginTop: '1rem', color: '#5a4a2f' }}>Loading invitation...</div> : null}
+                {isLoading ? <div style={{ marginTop: '1rem', color: colors.muted_text }}>Loading invitation...</div> : null}
             </div>
 
             {!isLoading && pickup ? (
                 <div style={{ display: 'grid', gap: '1rem', marginTop: '1.25rem' }}>
-                    <div style={{ ...cardStyle, display: 'grid', gap: '1rem' }}>
+                    <div style={{ ...cardStyle(colors.panel_background, colors.panel_border), display: 'grid', gap: '1rem' }}>
                         <button
                             disabled={isStarting}
                             onClick={() => {
                                 void handleStartQuiz();
                             }}
                             style={{
-                                ...startButtonStyle,
+                                ...startButtonStyle(colors.accent, colors.accent_text),
                                 alignSelf: 'center',
                                 boxShadow: '0 10px 26px rgba(36, 90, 120, 0.28)',
                                 fontSize: '1.2rem',
@@ -180,7 +182,7 @@ const InvitationPickupPage: React.FC = () => {
                         </button>
 
                         {sharingMode !== 'off' ? (
-                            <div style={{ color: '#5a4a2f', fontSize: '0.9rem', lineHeight: 1.5 }}>
+                            <div style={{ color: colors.muted_text, fontSize: '0.9rem', lineHeight: 1.5 }}>
                                 {sharingMode === 'mandatory' ? (
                                     <span>Your results will be shared with {sharebackName}.</span>
                                 ) : (
@@ -202,18 +204,18 @@ const InvitationPickupPage: React.FC = () => {
 
             {!isLoading && pickup ? (
                 <div style={{ marginTop: '1.35rem' }}>
-                    <div style={{ color: '#6b5734', fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.55rem', textTransform: 'uppercase' }}>Use this link to resume on another device</div>
+                    <div style={{ color: colors.muted_text, fontSize: '0.8rem', fontWeight: 700, letterSpacing: '0.08em', marginBottom: '0.55rem', textTransform: 'uppercase' }}>Use this link to resume on another device</div>
                     <div style={{ alignItems: 'center', display: 'flex', gap: '0.6rem' }}>
                         <input
                             readOnly
                             value={invitationUrl}
-                            style={{ background: '#fcfbf8', border: '1px solid #c8bfa9', borderRadius: 12, color: '#241d14', flex: 1, minWidth: 0, padding: '0.75rem 0.9rem' }}
+                            style={{ background: colors.panel_background, border: `1px solid ${colors.panel_border}`, borderRadius: 12, color: colors.body_text, flex: 1, minWidth: 0, padding: '0.75rem 0.9rem' }}
                         />
                         <button
                             onClick={() => {
                                 void handleCopyQuizLink();
                             }}
-                            style={{ background: 'transparent', border: '1px solid #245a78', borderRadius: 999, color: '#245a78', cursor: 'pointer', fontWeight: 700, padding: '0.65rem 1rem', whiteSpace: 'nowrap' }}
+                            style={{ background: 'transparent', border: `1px solid ${colors.accent}`, borderRadius: 999, color: colors.accent, cursor: 'pointer', fontWeight: 700, padding: '0.65rem 1rem', whiteSpace: 'nowrap' }}
                             type="button"
                         >
                             Copy

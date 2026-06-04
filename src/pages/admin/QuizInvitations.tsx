@@ -11,18 +11,19 @@ import {
     type QuizInvitation,
 } from '../../lib/admin-invitations';
 import { buildViewUrl } from '../../lib/view-keys';
+import { deriveThemeUiColors, resolveThemeColors } from '../../lib/theme-colors';
 
 type InvitationResponse = {
     error?: string;
     invitation?: QuizInvitation;
 };
 
-const panelStyle: React.CSSProperties = {
-    background: 'rgba(255, 250, 240, 0.88)',
-    border: '1px solid #c8bfa9',
+const panelStyle = (panelBackground: string, panelBorder: string): React.CSSProperties => ({
+    background: panelBackground,
+    border: `1px solid ${panelBorder}`,
     borderRadius: 18,
     padding: '1rem',
-};
+});
 
 const normalizeMaxUsesInput = (value: string): number | null => {
     const trimmed = value.trim();
@@ -76,12 +77,12 @@ const sharingModeOptions: QuizInvitation['result_sharing_mode'][] = ['off', 'opt
 
 const requiresSharebackName = (mode: QuizInvitation['result_sharing_mode']) => mode !== 'off';
 
-const statusStyle = (status: ReturnType<typeof getQuizInvitationStatus>): React.CSSProperties => {
+const statusStyle = (status: ReturnType<typeof getQuizInvitationStatus>, accent: string): React.CSSProperties => {
     const palette = {
         active: { background: '#e5f4df', border: '#84ad6a', color: '#20481f' },
         deactivated: { background: '#f4e4dc', border: '#c48b70', color: '#6c2b17' },
         exhausted: { background: '#f6edd6', border: '#c7a75f', color: '#6a4a10' },
-        expired: { background: '#ece9e2', border: '#aaa08c', color: '#554c3c' },
+        expired: { background: '#ece9e2', border: accent, color: '#554c3c' },
     }[status];
 
     return {
@@ -98,7 +99,9 @@ const statusStyle = (status: ReturnType<typeof getQuizInvitationStatus>): React.
 
 const QuizInvitationsPage: React.FC = () => {
     const { adminKey } = useParams<{ adminKey: string }>();
-    const { error: quizError, isLoading: isLoadingQuiz, metadata } = useAdminQuizDefinition(adminKey);
+    const { definition, error: quizError, isLoading: isLoadingQuiz, metadata } = useAdminQuizDefinition(adminKey);
+    const colors = React.useMemo(() => resolveThemeColors(definition?.display_config.theme_colors), [definition?.display_config.theme_colors]);
+    const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
 
     const [invitations, setInvitations] = React.useState<QuizInvitation[]>([]);
     const [draftMaxUses, setDraftMaxUses] = React.useState<Record<string, string>>({});
@@ -323,7 +326,7 @@ const QuizInvitationsPage: React.FC = () => {
     };
 
     return (
-        <AdminShell adminKey={adminKey} currentPage="invitations" metadata={metadata}>
+        <AdminShell adminKey={adminKey} currentPage="invitations" metadata={metadata} themeColors={definition?.display_config.theme_colors}>
             <header style={{ alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
                 <div>
                     <h1 style={{ marginBottom: '0.35rem' }}>Quiz Invitations</h1>
@@ -338,10 +341,10 @@ const QuizInvitationsPage: React.FC = () => {
                         setIsCreateModalOpen(true);
                     }}
                     style={{
-                        background: '#6a5032',
+                        background: colors.accent,
                         border: 'none',
                         borderRadius: 999,
-                        color: '#f6f0df',
+                        color: colors.accent_text,
                         cursor: 'pointer',
                         padding: '0.8rem 1.25rem',
                     }}
@@ -352,19 +355,19 @@ const QuizInvitationsPage: React.FC = () => {
             </header>
 
             {quizError ? (
-                <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', color: '#6f2412', marginBottom: '1rem', padding: '0.75rem 1rem', whiteSpace: 'pre-wrap' }}>
+                <div style={{ background: ui.danger_background, border: `1px solid ${ui.danger_border}`, color: ui.danger_text, marginBottom: '1rem', padding: '0.75rem 1rem', whiteSpace: 'pre-wrap' }}>
                     {quizError}
                 </div>
             ) : null}
 
             {pageError ? (
-                <div style={{ background: '#fbe9e7', border: '1px solid #d86b47', color: '#6f2412', marginBottom: '1rem', padding: '0.75rem 1rem', whiteSpace: 'pre-wrap' }}>
+                <div style={{ background: ui.danger_background, border: `1px solid ${ui.danger_border}`, color: ui.danger_text, marginBottom: '1rem', padding: '0.75rem 1rem', whiteSpace: 'pre-wrap' }}>
                     {pageError}
                 </div>
             ) : null}
 
             {message ? (
-                <div style={{ background: '#edf7ed', border: '1px solid #5a8f5a', color: '#1f4f1f', marginBottom: '1rem', padding: '0.75rem 1rem' }}>
+                <div style={{ background: ui.success_background, border: `1px solid ${ui.success_border}`, color: ui.success_text, marginBottom: '1rem', padding: '0.75rem 1rem' }}>
                     {message}
                 </div>
             ) : null}
@@ -382,15 +385,15 @@ const QuizInvitationsPage: React.FC = () => {
                         zIndex: 40,
                     }}
                 >
-                    <div style={{ ...panelStyle, boxShadow: '0 20px 60px rgba(28, 18, 8, 0.28)', maxWidth: 520, width: '100%' }}>
+                    <div style={{ ...panelStyle(colors.panel_background, colors.panel_border), boxShadow: '0 20px 60px rgba(28, 18, 8, 0.28)', maxWidth: 520, width: '100%' }}>
                         <div style={{ alignItems: 'flex-start', display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
                             <div>
                                 <h2 style={{ margin: 0 }}>Create New Link</h2>
-                                <p style={{ color: '#5d4b30', margin: '0.35rem 0 0' }}>Create an invitation link above the current list.</p>
+                                <p style={{ color: colors.muted_text, margin: '0.35rem 0 0' }}>Create an invitation link above the current list.</p>
                             </div>
                             <button
                                 onClick={closeCreateModal}
-                                style={{ background: 'transparent', border: '1px solid #b7ab91', borderRadius: 999, color: '#4a3922', cursor: 'pointer', padding: '0.55rem 0.9rem' }}
+                                style={{ background: 'transparent', border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: 'pointer', padding: '0.55rem 0.9rem' }}
                                 type="button"
                             >
                                 Close
@@ -399,31 +402,31 @@ const QuizInvitationsPage: React.FC = () => {
 
                         <form onSubmit={handleCreateInvitation}>
                             <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '0.9rem' }}>
-                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>Label</span>
+                                <span style={{ color: colors.body_text, fontWeight: 700 }}>Label</span>
                                 <input
                                     onChange={(event) => setCreateLabel(event.target.value)}
                                     placeholder="Optional internal label"
-                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                     type="text"
                                     value={createLabel}
                                 />
                             </label>
                             <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '1rem' }}>
-                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>Max Uses</span>
+                                <span style={{ color: colors.body_text, fontWeight: 700 }}>Max Uses</span>
                                 <input
                                     inputMode="numeric"
                                     onChange={(event) => setCreateMaxUses(event.target.value)}
                                     placeholder="Leave blank for unlimited"
-                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                     type="text"
                                     value={createMaxUses}
                                 />
                             </label>
                             <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '1rem' }}>
-                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>Result Sharing</span>
+                                <span style={{ color: colors.body_text, fontWeight: 700 }}>Result Sharing</span>
                                 <select
                                     onChange={(event) => setCreateSharingMode(event.target.value as QuizInvitation['result_sharing_mode'])}
-                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                     value={createSharingMode}
                                 >
                                     {sharingModeOptions.map((mode) => (
@@ -432,16 +435,16 @@ const QuizInvitationsPage: React.FC = () => {
                                         </option>
                                     ))}
                                 </select>
-                                <div style={{ color: '#6b5734', fontSize: '0.88rem' }}>{sharingModeDescriptions[createSharingMode]}</div>
+                                <div style={{ color: colors.muted_text, fontSize: '0.88rem' }}>{sharingModeDescriptions[createSharingMode]}</div>
                             </label>
                             <label style={{ display: 'grid', gap: '0.35rem', marginBottom: '1rem' }}>
-                                <span style={{ color: '#4e3d24', fontWeight: 700 }}>
+                                <span style={{ color: colors.body_text, fontWeight: 700 }}>
                                     Share-Back Name {requiresSharebackName(createSharingMode) ? '(required)' : '(optional)'}
                                 </span>
                                 <input
                                     onChange={(event) => setCreateSharebackName(event.target.value)}
                                     placeholder="Example: Acme Team"
-                                    style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                    style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                     type="text"
                                     value={createSharebackName}
                                 />
@@ -449,7 +452,7 @@ const QuizInvitationsPage: React.FC = () => {
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
                                 <button
                                     disabled={isCreating}
-                                    style={{ background: '#30291f', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.25rem' }}
+                                    style={{ background: colors.body_text, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: 'pointer', padding: '0.75rem 1.25rem' }}
                                     type="submit"
                                 >
                                     {isCreating ? 'Creating…' : 'Create Link'}
@@ -457,7 +460,7 @@ const QuizInvitationsPage: React.FC = () => {
                                 <button
                                     disabled={isCreating}
                                     onClick={closeCreateModal}
-                                    style={{ background: '#e9dfc8', border: '1px solid #b7ab91', borderRadius: 999, color: '#4a3922', cursor: 'pointer', padding: '0.75rem 1.25rem' }}
+                                    style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: 'pointer', padding: '0.75rem 1.25rem' }}
                                     type="button"
                                 >
                                     Cancel
@@ -468,11 +471,11 @@ const QuizInvitationsPage: React.FC = () => {
                 </div>
             ) : null}
 
-            <section style={panelStyle}>
+            <section style={panelStyle(colors.panel_background, colors.panel_border)}>
                 <h2 style={{ marginTop: 0 }}>Existing Invitations</h2>
                 {isLoadingQuiz || isLoadingInvitations ? <div>Loading invitations...</div> : null}
                 {!isLoadingQuiz && !isLoadingInvitations && invitations.length === 0 ? (
-                    <div style={{ color: '#6b5734' }}>No invitation links have been created yet.</div>
+                    <div style={{ color: colors.muted_text }}>No invitation links have been created yet.</div>
                 ) : null}
 
                 <div style={{ display: 'grid', gap: '1rem' }}>
@@ -481,43 +484,43 @@ const QuizInvitationsPage: React.FC = () => {
                         const isBusy = busyInvitationId === invitation.id;
 
                         return (
-                            <article key={invitation.id} style={{ background: '#fffaf0', border: '1px solid #d7ccb4', borderRadius: 16, display: 'grid', gap: '0.85rem', padding: '1rem' }}>
+                            <article key={invitation.id} style={{ background: colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 16, display: 'grid', gap: '0.85rem', padding: '1rem' }}>
                                 <div style={{ alignItems: 'flex-start', display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
                                     <div>
                                         <div style={{ fontSize: '1.02rem', fontWeight: 700, marginBottom: '0.35rem' }}>
                                             {invitation.label.trim().length > 0 ? invitation.label : `Invitation ${invitation.id.slice(0, 8)}`}
                                         </div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.9rem' }}>Created {formatDate(invitation.created_at)}</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.9rem' }}>Created {formatDate(invitation.created_at)}</div>
                                     </div>
-                                    <span style={statusStyle(status)}>{statusLabelByState[status]}</span>
+                                    <span style={statusStyle(status, colors.accent)}>{statusLabelByState[status]}</span>
                                 </div>
 
                                 <div style={{ display: 'grid', gap: '0.5rem', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Uses</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Uses</div>
                                         <div style={{ fontWeight: 700 }}>{invitation.use_count}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Max Uses</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Max Uses</div>
                                         <div style={{ fontWeight: 700 }}>{invitation.max_uses === null ? 'Unlimited' : invitation.max_uses}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Sharing Mode</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Sharing Mode</div>
                                         <div style={{ fontWeight: 700 }}>{sharingModeLabels[invitation.result_sharing_mode]}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Share-Back Name</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Share-Back Name</div>
                                         <div style={{ fontWeight: 700 }}>{invitation.shareback_name.trim() || '—'}</div>
                                     </div>
                                     <div>
-                                        <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Invitation Path</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Invitation Path</div>
                                         <div style={{ fontSize: '0.86rem', wordBreak: 'break-all' }}>/invite/{invitation.invitation_key}</div>
                                     </div>
                                 </div>
 
                                 <div style={{ alignItems: 'end', display: 'grid', gap: '0.75rem', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
                                     <label style={{ display: 'grid', gap: '0.35rem' }}>
-                                        <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>Adjust Max Uses</span>
+                                        <span style={{ color: colors.body_text, fontSize: '0.9rem', fontWeight: 700 }}>Adjust Max Uses</span>
                                         <input
                                             disabled={isBusy}
                                             inputMode="numeric"
@@ -528,13 +531,13 @@ const QuizInvitationsPage: React.FC = () => {
                                                 }))
                                             }
                                             placeholder="Unlimited"
-                                            style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                            style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                             type="text"
                                             value={draftMaxUses[invitation.id] ?? ''}
                                         />
                                     </label>
                                     <label style={{ display: 'grid', gap: '0.35rem' }}>
-                                        <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>Result Sharing</span>
+                                        <span style={{ color: colors.body_text, fontSize: '0.9rem', fontWeight: 700 }}>Result Sharing</span>
                                         <select
                                             disabled={isBusy}
                                             onChange={(event) =>
@@ -543,7 +546,7 @@ const QuizInvitationsPage: React.FC = () => {
                                                     [invitation.id]: event.target.value as QuizInvitation['result_sharing_mode'],
                                                 }))
                                             }
-                                            style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                            style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                             value={draftSharingModes[invitation.id] ?? invitation.result_sharing_mode}
                                         >
                                             {sharingModeOptions.map((mode) => (
@@ -552,10 +555,10 @@ const QuizInvitationsPage: React.FC = () => {
                                                 </option>
                                             ))}
                                         </select>
-                                        <div style={{ color: '#6b5734', fontSize: '0.82rem' }}>{sharingModeDescriptions[draftSharingModes[invitation.id] ?? invitation.result_sharing_mode]}</div>
+                                        <div style={{ color: colors.muted_text, fontSize: '0.82rem' }}>{sharingModeDescriptions[draftSharingModes[invitation.id] ?? invitation.result_sharing_mode]}</div>
                                     </label>
                                     <label style={{ display: 'grid', gap: '0.35rem' }}>
-                                        <span style={{ color: '#4e3d24', fontSize: '0.9rem', fontWeight: 700 }}>
+                                        <span style={{ color: colors.body_text, fontSize: '0.9rem', fontWeight: 700 }}>
                                             Share-Back Name {requiresSharebackName(draftSharingModes[invitation.id] ?? invitation.result_sharing_mode) ? '(required)' : '(optional)'}
                                         </span>
                                         <input
@@ -567,7 +570,7 @@ const QuizInvitationsPage: React.FC = () => {
                                                 }))
                                             }
                                             placeholder="Example: Acme Team"
-                                            style={{ border: '1px solid #c8bfa9', borderRadius: 12, padding: '0.75rem 0.9rem' }}
+                                            style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 12, padding: '0.75rem 0.9rem' }}
                                             type="text"
                                             value={draftSharebackNames[invitation.id] ?? invitation.shareback_name}
                                         />
@@ -580,7 +583,7 @@ const QuizInvitationsPage: React.FC = () => {
                                         onClick={() => {
                                             void handleSaveMaxUses(invitation.id);
                                         }}
-                                        style={{ background: '#30291f', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.1rem' }}
+                                        style={{ background: colors.body_text, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: 'pointer', padding: '0.75rem 1.1rem' }}
                                         type="button"
                                     >
                                         {isBusy ? 'Saving…' : 'Save Invitation Settings'}
@@ -590,7 +593,7 @@ const QuizInvitationsPage: React.FC = () => {
                                         onClick={() => {
                                             void handleCopyLink(invitation);
                                         }}
-                                        style={{ background: '#6a5032', border: 'none', borderRadius: 999, color: '#f6f0df', cursor: 'pointer', padding: '0.75rem 1.1rem' }}
+                                        style={{ background: colors.accent, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: 'pointer', padding: '0.75rem 1.1rem' }}
                                         type="button"
                                     >
                                         Copy Invitation Link
@@ -600,7 +603,7 @@ const QuizInvitationsPage: React.FC = () => {
                                         onClick={() => {
                                             void handleDeactivate(invitation.id);
                                         }}
-                                        style={{ background: invitation.revoked_at ? '#d9d0be' : '#efe2d2', border: '1px solid #c5a98d', borderRadius: 999, color: '#5d3b21', cursor: invitation.revoked_at ? 'default' : 'pointer', padding: '0.75rem 1.1rem' }}
+                                        style={{ background: invitation.revoked_at ? colors.panel_background : colors.page_background, border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.body_text, cursor: invitation.revoked_at ? 'default' : 'pointer', padding: '0.75rem 1.1rem' }}
                                         type="button"
                                     >
                                         {invitation.revoked_at ? 'Deactivated' : 'Deactivate'}
@@ -608,9 +611,9 @@ const QuizInvitationsPage: React.FC = () => {
                                 </div>
 
                                 <div style={{ display: 'grid', gap: '0.5rem' }}>
-                                    <div style={{ color: '#6b5734', fontSize: '0.8rem', textTransform: 'uppercase' }}>Auto-created Result Links</div>
+                                    <div style={{ color: colors.muted_text, fontSize: '0.8rem', textTransform: 'uppercase' }}>Auto-created Result Links</div>
                                     {invitation.shared_view_keys.length === 0 ? (
-                                        <div style={{ color: '#6b5734' }}>No shared result links have been created yet.</div>
+                                        <div style={{ color: colors.muted_text }}>No shared result links have been created yet.</div>
                                     ) : (
                                         <div style={{ display: 'grid', gap: '0.6rem' }}>
                                             {invitation.shared_view_keys.map((viewKey, index) => (
@@ -620,10 +623,10 @@ const QuizInvitationsPage: React.FC = () => {
                                                     rel="noreferrer"
                                                     style={{
                                                         alignItems: 'center',
-                                                        background: '#f4ead3',
-                                                        border: '1px solid #d2c19f',
+                                                        background: colors.panel_background,
+                                                        border: `1px solid ${colors.panel_border}`,
                                                         borderRadius: 12,
-                                                        color: '#4b3217',
+                                                        color: colors.body_text,
                                                         display: 'flex',
                                                         fontWeight: 700,
                                                         justifyContent: 'space-between',
@@ -633,7 +636,7 @@ const QuizInvitationsPage: React.FC = () => {
                                                     target="_blank"
                                                 >
                                                     <span>Open shared result #{index + 1}</span>
-                                                    <span style={{ color: '#6b5734', fontSize: '0.82rem', fontWeight: 500 }}>created {formatDate(viewKey.created_at)}</span>
+                                                    <span style={{ color: colors.muted_text, fontSize: '0.82rem', fontWeight: 500 }}>created {formatDate(viewKey.created_at)}</span>
                                                 </a>
                                             ))}
                                         </div>

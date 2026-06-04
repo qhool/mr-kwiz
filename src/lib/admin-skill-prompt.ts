@@ -24,6 +24,7 @@ type AdminSkillPromptContext = {
     question_count: number;
     question_index: string;
     question_ordering: string;
+    theme_colors: string;
     target_context: string;
     trait_count: number;
     trait_order: string;
@@ -155,6 +156,27 @@ const renderQuestionIndex = (definition: QuizDefinition): string => {
     return lines.join('\n');
 };
 
+const renderThemeColors = (definition: QuizDefinition): string => {
+    const lines = ['## Theme Colors', ''];
+    const themeColors = definition.display_config.theme_colors;
+
+    if (!themeColors || Object.keys(themeColors).length === 0) {
+        lines.push('No custom theme colors are configured.');
+        return lines.join('\n');
+    }
+
+    lines.push(
+        renderTable(
+            ['token', 'hex'],
+            Object.entries(themeColors)
+                .sort(([left], [right]) => left.localeCompare(right))
+                .map(([token, hex]) => [escapeCell(token), escapeCell(hex)])
+        )
+    );
+
+    return lines.join('\n');
+};
+
 const buildPromptContext = (
     definition: QuizDefinition,
     metadata: AdminPromptMetadata,
@@ -174,6 +196,7 @@ const buildPromptContext = (
         question_count: definition.questions.length,
         question_index: renderQuestionIndex(definition),
         question_ordering: definition.question_ordering ?? 'ordered',
+        theme_colors: renderThemeColors(definition),
         target_context: '',
         trait_count: definition.traits.length,
         trait_order: renderTraitOrder(definition),
