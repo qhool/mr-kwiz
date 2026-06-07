@@ -115,10 +115,13 @@ Union of all accepted quiz edit operations.
 | "create_question"        | CreateQuestion       | Add a new question to the definition.                                                                                                     |
 | "delete_archetype"       | DeleteArchetype      |                                                                                                                                           |
 | "delete_question"        | DeleteQuestion       | Delete an existing question using optimistic concurrency on the old hash.                                                                 |
+| "merge_at_path"          | MergeAtPath          |                                                                                                                                           |
+| "remove_at_path"         | RemoveAtPath         |                                                                                                                                           |
 | "reorder_archetypes"     | ReorderArchetypes    |                                                                                                                                           |
 | "reorder_questions"      | ReorderQuestions     | Reorder the existing questions by supplying the full ordered question id set.                                                             |
 | "reorder_traits"         | ReorderTraits        | Reorder the existing trait list before any questions exist.                                                                               |
 | "replace_archetype"      | ReplaceArchetype     |                                                                                                                                           |
+| "replace_at_path"        | ReplaceAtPath        |                                                                                                                                           |
 | "replace_display_config" | ReplaceDisplayConfig | Replace the entire display_config object. This operation replaces the whole display_config object.                                        |
 | "replace_question"       | ReplaceQuestion      | Replace an existing question using optimistic concurrency on the old hash.                                                                |
 | "replace_scoring_config" | ReplaceScoringConfig | Replace the entire scoring_config object. This operation replaces the whole scoring_config object. It does not rewrite question matrices. |
@@ -233,6 +236,21 @@ A flattened numeric matrix used for per-response per-trait weights.
 Notes:
 - Indexing rule: values[response_index * trait_count + trait_index].
 
+## MergeAtPath
+
+| field | type            | required | constraints  | notes |
+| ----- | --------------- | -------- | ------------ | ----- |
+| op    | "merge_at_path" | yes      |              |       |
+| path  | PathEditPath    | yes      | min length 1 |       |
+| value | ZodRecord       | yes      |              |       |
+
+## RemoveAtPath
+
+| field | type             | required | constraints  | notes |
+| ----- | ---------------- | -------- | ------------ | ----- |
+| op    | "remove_at_path" | yes      |              |       |
+| path  | PathEditPath     | yes      | min length 1 |       |
+
 ## ReorderArchetypes
 
 | field         | type                 | required | constraints  | notes |
@@ -265,6 +283,14 @@ Reorder the existing trait list before any questions exist.
 | archetype    | Archetype           | yes      |              | Main archetype or subtype definition used for result classification. |
 | archetype_id | string              | yes      | min length 1 |                                                                      |
 | op           | "replace_archetype" | yes      |              |                                                                      |
+
+## ReplaceAtPath
+
+| field | type              | required | constraints  | notes |
+| ----- | ----------------- | -------- | ------------ | ----- |
+| op    | "replace_at_path" | yes      |              |       |
+| path  | PathEditPath      | yes      | min length 1 |       |
+| value | ZodUnknown        | yes      |              |       |
 
 ## ReplaceDisplayConfig
 

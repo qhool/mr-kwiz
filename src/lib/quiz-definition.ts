@@ -599,6 +599,42 @@ export const reorderArchetypesSchema = z
         archetype_ids: z.array(z.string().min(1)).min(1),
     });
 
+export const pathEditPathSchema = z
+    .string()
+    .min(1)
+    .refine(
+        (path) =>
+            path === '/title' ||
+            path === '/description' ||
+            path === '/question_ordering' ||
+            path === '/display_config' ||
+            path.startsWith('/display_config/') ||
+            path === '/scoring_config' ||
+            path.startsWith('/scoring_config/'),
+        'Path edit operations are limited to title, description, question_ordering, display_config, and scoring_config.'
+    )
+    .refine(
+        (path) => !path.startsWith('/display_config/archetypes'),
+        'Path edit operations cannot modify archetypes. Use archetype operations instead.'
+    );
+
+export const replaceAtPathSchema = z.strictObject({
+    op: z.literal('replace_at_path'),
+    path: pathEditPathSchema,
+    value: z.unknown(),
+});
+
+export const mergeAtPathSchema = z.strictObject({
+    op: z.literal('merge_at_path'),
+    path: pathEditPathSchema,
+    value: z.record(z.string(), z.unknown()),
+});
+
+export const removeAtPathSchema = z.strictObject({
+    op: z.literal('remove_at_path'),
+    path: pathEditPathSchema,
+});
+
 export const quizEditOperationSchema = z.union([
     createQuestionSchema,
     replaceQuestionSchema,
@@ -614,6 +650,9 @@ export const quizEditOperationSchema = z.union([
     replaceArchetypeSchema,
     deleteArchetypeSchema,
     reorderArchetypesSchema,
+    replaceAtPathSchema,
+    mergeAtPathSchema,
+    removeAtPathSchema,
 ]).meta({
     description: 'Union of all accepted quiz edit operations.',
 });
@@ -747,6 +786,77 @@ export const createDefaultQuizDefinition = (title: string, description = ''): Qu
     };
 
     return quizDefinitionSchema.parse(definition);
+};
+
+const decodeJsonPointerSegment = (segment: string): string => segment.replace(/~1/g, '/').replace(/~0/g, '~');
+
+const getPathSegments = (path: string): string[] => {
+    if (!path.startsWith('/')) {
+        throw new QuizEditValidationError('Path edit paths must be JSON Pointer paths starting with /.');
+    }
+
+    return path
+        .slice(1)
+        .split('/')
+        .filter((segment) => segment.length > 0)
+        .map(decodeJsonPointerSegment);
+};
+
+const getObjectAtPath = (root: Record<string, unknown>, segments: string[]): Record<string, unknown> => {
+    let current: unknown = root;
+
+    for (const segment of segments) {
+        if (!current || typeof current !== 'object' || Array.isArray(current)) {
+            throw new QuizEditValidationError('Path edit target parent is not an object.');
+        }
+
+        current = (current as Record<string, unknown>)[segment];
+    }
+
+    if (!current || typeof current !== 'object' || Array.isArray(current)) {
+        throw new QuizEditValidationError('Path edit target is not an object.');
+    }
+
+    return current as Record<string, unknown>;
+};
+
+const getPathParent = (root: Record<string, unknown>, path: string): { key: string; parent: Record<string, unknown> } => {
+    const segments = getPathSegments(path);
+    const key = segments.at(-1);
+
+    if (!key) {
+        throw new QuizEditValidationError('Path edit cannot target the document root.');
+    }
+
+    return {
+        key,
+        parent: getObjectAtPath(root, segments.slice(0, -1)),
+    };
+};
+
+const applyReplaceAtPath = (definition: QuizDefinition, path: string, value: unknown): QuizDefinition => {
+    const draft = structuredClone(definition) as unknown as Record<string, unknown>;
+    const { parent, key } = getPathParent(draft, path);
+    parent[key] = value;
+    return quizDefinitionSchema.parse(draft);
+};
+
+const applyMergeAtPath = (definition: QuizDefinition, path: string, value: Record<string, unknown>): QuizDefinition => {
+    const draft = structuredClone(definition) as unknown as Record<string, unknown>;
+    const target = getObjectAtPath(draft, getPathSegments(path));
+    Object.assign(target, value);
+    return quizDefinitionSchema.parse(draft);
+};
+
+const applyRemoveAtPath = (definition: QuizDefinition, path: string): QuizDefinition => {
+    if (path === '/title' || path === '/description' || path === '/question_ordering' || path === '/display_config' || path === '/scoring_config') {
+        throw new QuizEditValidationError(`Cannot remove required path ${path}.`);
+    }
+
+    const draft = structuredClone(definition) as unknown as Record<string, unknown>;
+    const { parent, key } = getPathParent(draft, path);
+    delete parent[key];
+    return quizDefinitionSchema.parse(draft);
 };
 
 export const applyQuizEditPatch = async (
@@ -1081,6 +1191,21 @@ export const applyQuizEditPatch = async (
                         ),
                     },
                 };
+                break;
+            }
+
+            case 'replace_at_path': {
+                nextDefinition = applyReplaceAtPath(nextDefinition, operation.path, operation.value);
+                break;
+            }
+
+            case 'merge_at_path': {
+                nextDefinition = applyMergeAtPath(nextDefinition, operation.path, operation.value);
+                break;
+            }
+
+            case 'remove_at_path': {
+                nextDefinition = applyRemoveAtPath(nextDefinition, operation.path);
                 break;
             }
         }

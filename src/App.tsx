@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import HomePage from './pages/index';
+import QuizAiPage from './pages/admin/QuizAi';
 import QuizEditPage from './pages/admin/QuizEdit';
 import QuizInvitationsPage from './pages/admin/QuizInvitations';
 import QuizPreviewPage from './pages/admin/QuizPreview';
@@ -14,6 +15,7 @@ const App: React.FC = () => {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/admin/:adminKey/edit" element={<QuizEditPage />} />
+        <Route path="/admin/:adminKey/ai" element={<QuizAiPage />} />
         <Route path="/admin/:adminKey/invitations" element={<QuizInvitationsPage />} />
         <Route path="/admin/:adminKey/preview" element={<QuizPreviewPage />} />
         <Route path="/invite/:invitationKey" element={<InvitationPickupPage />} />

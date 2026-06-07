@@ -8,7 +8,7 @@ import { listStoredAdminSessions, listStoredRespondentSessions } from '../lib/re
 import { deriveThemeUiColors, resolveThemeColors } from '../lib/theme-colors';
 import { SessionNavigationModal } from './session-navigation';
 
-type AdminPage = 'edit' | 'preview' | 'invitations';
+type AdminPage = 'edit' | 'preview' | 'invitations' | 'ai';
 
 type AdminShellProps = {
     adminKey?: string;
@@ -22,6 +22,7 @@ const navItems: Array<{ id: AdminPage; label: string; path: (adminKey: string) =
     { id: 'edit', label: 'Edit', path: (adminKey) => `/admin/${encodeURIComponent(adminKey)}/edit` },
     { id: 'preview', label: 'Preview', path: (adminKey) => `/admin/${encodeURIComponent(adminKey)}/preview` },
     { id: 'invitations', label: 'Invitations', path: (adminKey) => `/admin/${encodeURIComponent(adminKey)}/invitations` },
+    { id: 'ai', label: 'AI', path: (adminKey) => `/admin/${encodeURIComponent(adminKey)}/ai` },
 ];
 
 const navLinkStyle = (isActive: boolean, accent: string, accentText: string, borderColor: string): React.CSSProperties => ({
