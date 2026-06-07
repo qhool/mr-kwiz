@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { buildAdminQuestionEditPrompt } from '../admin-question-edit-prompt';
 import { renderAdminSkillPrompt } from '../admin-skill-prompt';
+import { MRKWIZ_MCP_TOOLS } from '../mrkwiz-mcp-tools';
+import { renderMrKwizQuizAuthorSkill } from '../mrkwiz-quiz-author-skill';
 import { buildRespondentResultsPrompt } from '../respondent-results-prompt';
 import { makeAnswers, testDefinition } from './fixtures';
 
@@ -70,5 +72,22 @@ describe('renderAdminSkillPrompt', () => {
         expect(prompt).toContain('## Question Index');
         expect(prompt).toContain('| position | question_id | prompt_summary | responses |');
         expect(prompt).toContain('| 1        | q01         | Prompt q01     | 3         |');
+    });
+});
+
+describe('renderMrKwizQuizAuthorSkill', () => {
+    it('injects generated schema docs and every dynamic MCP tool', async () => {
+        const skill = await renderMrKwizQuizAuthorSkill();
+
+        expect(skill).toContain('## QuizEditPatch');
+        expect(skill).toContain('## QuizEditOperation');
+        expect(skill).toContain('dynamic MCP tools');
+        expect(skill).toContain('do not fall back to bridge setup/config tools for editing');
+        expect(skill).toContain('The selected token hash is for identity and status only.');
+
+        for (const tool of MRKWIZ_MCP_TOOLS) {
+            expect(skill).toContain(`mrkwiz.${tool.name}`);
+            expect(skill).toContain(tool.description);
+        }
     });
 });

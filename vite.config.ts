@@ -5,8 +5,6 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { cloudflare } from '@cloudflare/vite-plugin';
 
-import { routeApiRequest } from './src/worker';
-
 const readDevVars = () => {
   const devVarsPath = path.resolve(process.cwd(), '.dev.vars');
 
@@ -80,6 +78,9 @@ export default defineConfig({
           }
 
           const request = await buildNodeRequest(req, url);
+          const { routeApiRequest } = await server.ssrLoadModule('/src/worker.ts') as {
+            routeApiRequest: (request: Request, env: Record<string, string>) => Promise<Response | null>;
+          };
           const response = await routeApiRequest(request, readDevVars());
 
           if (response) {

@@ -10,6 +10,7 @@ import {
     quizEditPatchSchema,
     type QuizDefinition,
 } from '../../src/lib/quiz-definition';
+import { getMrKwizMcpToolsList } from '../../src/lib/mrkwiz-mcp-tools';
 import type { Database } from '../../src/types/database.generated';
 
 import { type AppEnv, getAppEnv } from '../utils/env';
@@ -252,18 +253,6 @@ const executeToolCall = async (ctx: McpAuthContext, name: string, args: unknown)
     }
 };
 
-const toolsList = () => ({
-    tools: [
-        { name: 'get_quiz_context', description: 'Get the current MrKwiz quiz context and editing reminders.', inputSchema: { type: 'object', properties: {} } },
-        { name: 'get_question_context', description: 'Get a full question, trait order, and old_question_hash for safe editing.', inputSchema: { type: 'object', properties: { question_id: { type: 'string' } }, required: ['question_id'] } },
-        { name: 'get_edit_capabilities', description: 'List supported edit operations for the current quiz state.', inputSchema: { type: 'object', properties: {} } },
-        { name: 'validate_edit', description: 'Validate a QuizEditPatch without saving it.', inputSchema: { type: 'object', properties: { patch: { type: 'object' } }, required: ['patch'] } },
-        { name: 'apply_edit', description: 'Apply a validated QuizEditPatch to the quiz.', inputSchema: { type: 'object', properties: { patch: { type: 'object' } }, required: ['patch'] } },
-        { name: 'set_callback_url', description: 'Register the local OpenCode bridge callback URL for this token.', inputSchema: { type: 'object', properties: { callback_url: { type: 'string' }, callback_origin: { type: 'string' } }, required: ['callback_url'] } },
-        { name: 'clear_callback_url', description: 'Clear the registered local OpenCode bridge callback URL.', inputSchema: { type: 'object', properties: {} } },
-    ],
-});
-
 export const handleMcpPost = async (env: Partial<AppEnv>, request: Request): Promise<Response> => {
     let rpc: JsonRpcRequest;
     try {
@@ -290,7 +279,7 @@ export const handleMcpPost = async (env: Partial<AppEnv>, request: Request): Pro
 
     try {
         if (rpc.method === 'tools/list') {
-            return jsonRpcResult(rpc.id, toolsList());
+            return jsonRpcResult(rpc.id, getMrKwizMcpToolsList());
         }
 
         if (rpc.method === 'tools/call') {

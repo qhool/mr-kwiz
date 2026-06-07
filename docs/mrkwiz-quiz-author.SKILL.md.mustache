@@ -1,0 +1,97 @@
+---
+name: mrkwiz-quiz-author
+description: Use when authoring or editing MrKwiz quizzes, quiz questions, traits, scoring matrices, archetypes, display settings, themes, OpenCode bootstrap, or MrKwiz MCP setup.
+---
+
+# MrKwiz Quiz Author
+
+Use this skill whenever the user is authoring or editing a MrKwiz quiz, setting up MrKwiz MCP, connecting OpenCode to MrKwiz, or recovering from a token/setup issue.
+
+## User Guidance
+
+Assume the user may not be technical. Use short steps, plain language, and explicit confirmation points. Do not assume they know where config files live, what MCP means, or when OpenCode must restart.
+
+If setup is incomplete:
+
+- explain what is missing
+- give one next step at a time
+- prefer copyable snippets
+- tell the user when to restart OpenCode
+- preserve paste-back as a fallback
+
+## MrKwiz Model
+
+MrKwiz quizzes are editable JSON definitions with:
+
+- traits: latent dimensions measured by questions
+- questions: single-choice prompts with response options
+- score_matrix: response x trait signed movements
+- information_matrix: response x trait evidence weights
+- scoring_config: global scoring and adaptive selection settings
+- display_config: intro/completion text, archetypes, theme colors, and result display options
+- archetypes: result classifications based on trait conditions
+
+Trait order defines matrix column order. Response order defines matrix row order. For matrix values use row-major indexing: values[response_index * trait_count + trait_index].
+
+Once questions exist, do not add, remove, rename, or reorder traits. Use update_trait_text for wording-only trait edits.
+
+## MCP Workflow
+
+Use the MrKwiz MCP tools when available. OpenCode exposes the hosted MCP server under the `mrkwiz` namespace, so call dynamic tools such as `mrkwiz.get_quiz_context`, `mrkwiz.validate_edit`, and `mrkwiz.apply_edit`.
+
+`get_quiz_context`, `get_question_context`, `get_edit_capabilities`, `validate_edit`, and `apply_edit` are dynamic MCP tools discovered from the active MrKwiz MCP server at runtime. They may not appear in OpenCode's static helper/tool list.
+
+Continue using the same dynamic MrKwiz MCP tool surface that provided `get_quiz_context`; do not fall back to bridge setup/config tools for editing.
+
+For every editing task:
+
+1. Call `mrkwiz.get_quiz_context` first.
+2. For question replacement or deletion, call `mrkwiz.get_question_context` for the target question and preserve `old_question_hash`.
+3. Draft the smallest correct `QuizEditPatch`.
+4. Call `mrkwiz.validate_edit` before saving.
+5. If valid and the user requested direct application, or explicitly confirms saving, call `mrkwiz.apply_edit`.
+
+Apply only after user confirmation unless the user clearly requested direct application.
+
+If a token-expired error appears, tell the user their MrKwiz OpenCode token expired and guide them to create a replacement token from the MrKwiz admin AI page. Ask them to paste the new bootstrap prompt into OpenCode.
+
+## OpenCode Plugin Workflow
+
+If @mrkwiz/opencode-plugin is installed, prefer plugin tools during bootstrap.
+
+First call `mrkwiz_configure_default_model` with the exact provider/model identifier currently running the bootstrap conversation, using the model ID from your system context. Example: `mrkwiz_configure_default_model({ "model": "provider/model-id" })`. This stores the default model in local `.opencode/mrkwiz.json` so MrKwiz-created sessions do not accidentally select an unavailable model.
+
+Then call `mrkwiz_configure_mcp`. It saves the raw MCP token in the local `.opencode/mrkwiz.json` plugin config, keyed by the token's SHA-256 hash, and registers a token-hash callback URL with MrKwiz. Do not expose the raw token except as bearer auth.
+
+The plugin does not activate the MrKwiz MCP server at startup. When the MrKwiz admin UI calls a token-hash callback action, the plugin looks up the raw token locally, configures or reconfigures the `mrkwiz` MCP server with `Authorization: Bearer <raw token>`, then prompts the agent to load this skill and begin work.
+
+Use `mrkwiz_bridge_status` to inspect connected token hashes, callback URLs, configured default model, and the current active MCP token hash. A token can be valid in MrKwiz, connected to a callback, or active as the current OpenCode MCP token.
+
+Do not use `mrkwiz_configure_mcp`, `mrkwiz_configure_default_model`, or other plugin setup helpers once the selected token is already active and the dynamic `mrkwiz.*` MCP editing tools are available.
+
+The selected token hash is for identity and status only. It is not the raw MCP bearer token, and it cannot be used as `Authorization: Bearer ...`.
+
+If the plugin is not available, explain how to install it and tell the user OpenCode may need to restart.
+
+## Editing Rules
+
+- Prefer surgical edits over full-object replacement.
+- Use merge_at_path, replace_at_path, or remove_at_path for display_config and scoring_config when appropriate.
+- Use explicit question operations for questions.
+- Use explicit archetype operations for archetypes.
+- Do not expose large JSON patches unless needed.
+- Keep IDs stable unless the user asks to change them.
+- Keep question responses plausible, nonjudgmental, and concrete.
+- Avoid medical, legal, diagnostic, moralizing, or protected-class judgments unless the user has explicitly provided a safe framing.
+
+## MCP Tools
+
+{{{mcp_tools_sha256_a7b5031f0b6ce0ed084824ed72adfbdfa3beba09fe4336e35847767d3ba4f665}}}
+
+## QuizEditPatch Schema Reference
+
+{{{schema_reference_sha256_b46c2b27b96e0db22ec45b0ab5ce778f845e289278ab064e122435ffde23627f}}}
+
+## Fallback
+
+If MCP is unavailable, use paste-back mode. Produce exactly one valid `QuizEditPatch` JSON object and tell the user to paste it into the MrKwiz patch box.
