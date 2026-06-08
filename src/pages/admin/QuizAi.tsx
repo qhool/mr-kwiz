@@ -34,6 +34,7 @@ const buildBootstrapPrompt = (input: {
 
     return [
         'You are helping me connect OpenCode to my MrKwiz quiz. Please guide me step by step and do not assume I know where config files live.',
+        'First load the OpenCode skill named mrkwiz-opencode-setup and follow its setup/testing flow.',
         '',
         `Quiz: ${input.quizTitle}`,
         `MrKwiz site: ${input.baseUrl}`,

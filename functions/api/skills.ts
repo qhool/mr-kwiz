@@ -1,12 +1,10 @@
-import { renderMrKwizQuizAuthorSkill } from '../../src/lib/mrkwiz-quiz-author-skill';
+import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../../src/lib/mrkwiz-quiz-author-skill';
 
 const skillCatalog = () => ({
-    skills: [
-        {
-            name: 'mrkwiz-quiz-author',
-            files: ['SKILL.md'],
-        },
-    ],
+    skills: MRKWIZ_SKILL_NAMES.map((name) => ({
+        name,
+        files: ['SKILL.md'],
+    })),
 });
 
 export const handleSkillsGet = async (request: Request, path = ''): Promise<Response> => {
@@ -18,8 +16,11 @@ export const handleSkillsGet = async (request: Request, path = ''): Promise<Resp
         });
     }
 
-    if (normalizedPath === 'mrkwiz-quiz-author/SKILL.md') {
-        return new Response(await renderMrKwizQuizAuthorSkill(), {
+    const match = normalizedPath.match(/^([^/]+)\/SKILL\.md$/);
+    if (match) {
+        const skill = await renderMrKwizSkill(match[1]!);
+        if (!skill) return new Response('Skill not found.', { status: 404 });
+        return new Response(skill, {
             headers: { 'content-type': 'text/markdown; charset=utf-8' },
         });
     }

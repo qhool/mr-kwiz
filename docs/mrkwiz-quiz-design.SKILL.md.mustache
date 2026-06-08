@@ -1,0 +1,100 @@
+---
+name: mrkwiz-quiz-design
+description: Use for MrKwiz quiz concept design, traits, questions, scoring intent, archetypes, display ideas, and reading existing quiz structure without applying changes.
+---
+
+# MrKwiz Quiz Design
+
+Use this skill for conceptual quiz authoring and review. Assume OpenCode/MCP setup is already correct.
+
+Do not apply saved changes from this skill. If the user wants to save or update the quiz, load `mrkwiz-quiz-edit`.
+
+## Working Mode
+
+Help the user design better quiz structure:
+
+- clarify the quiz goal and audience
+- propose trait sets
+- write or improve questions
+- explain scoring intent in plain language
+- design archetypes and subtypes
+- review existing quiz structure
+- plan display/theme/result text changes
+
+Ask focused questions when the target is unclear. Prefer concrete drafts over abstract theory.
+
+## Reading Existing Quiz Structure
+
+If tools are available and the user asks about the current quiz, get context first.
+
+Use the visible plugin tools by default because they are easiest to see:
+
+- `mrkwiz_get_quiz_context` for quiz summary, traits, questions, archetypes, and reminders.
+- `mrkwiz_get_question_context` when discussing a specific existing question.
+- `mrkwiz_get_edit_capabilities` only if planning a future saved edit.
+
+If dynamic `mrkwiz.*` MCP tools are visible, they are equivalent.
+
+## Quiz Model
+
+MrKwiz quizzes are editable JSON definitions with:
+
+- traits: latent dimensions measured by questions
+- questions: single-choice prompts with response options
+- score_matrix: response x trait signed movements
+- information_matrix: response x trait evidence weights
+- scoring_config: global scoring and adaptive selection settings
+- display_config: intro/completion text, archetypes, theme colors, and result display options
+- archetypes: result classifications based on trait conditions
+
+Trait order defines matrix column order. Response order defines matrix row order. Matrix values use row-major indexing: `values[response_index * trait_count + trait_index]`.
+
+Once questions exist, do not propose adding, removing, renaming, or reordering traits as a casual edit. Existing quizzes can edit trait wording with `update_trait_text`, but structural trait changes require rebuilding dependent questions and matrices.
+
+## Trait Design
+
+A good trait should:
+
+- apply across many questions
+- have two interpretable ends
+- avoid making one end sound better than the other
+- avoid diagnosis, moral ranking, or protected-class judgment
+- help differentiate result patterns
+
+Trait labels should be specific enough to score but broad enough that several question scenarios can measure them.
+
+When the domain is unclear, ask what the quiz is trying to sort, recommend, predict, or describe. Do not assume the quiz is about relationships, sexuality, kink, mental health, politics, morality, or diagnosis unless the user says so.
+
+## Question Design
+
+Good single-choice questions should:
+
+- be concrete and easy to answer
+- have plausible options with no obvious “best” answer
+- map each response to trait movement intentionally
+- avoid moralizing or diagnostic wording
+- avoid double-barreled prompts
+- use response labels that can be scored consistently
+
+When proposing a question, include:
+
+- prompt
+- response options
+- which traits each option tends to move
+- any information-gain intent if the quiz is adaptive
+
+## Archetype Design
+
+Archetypes classify result patterns. Design them as descriptive, playful, or preference-based unless the user explicitly provides a suitable safe framing.
+
+Main archetypes should describe broad result regions. Subtypes should add nuance without contradicting the main archetype. Keep names clear and nonjudgmental.
+
+## Handoff To Editing
+
+When the user approves a concrete change and wants it saved:
+
+1. Say you are switching to the edit skill.
+2. Load `mrkwiz-quiz-edit`.
+3. In that skill, fetch context again before building the patch.
+
+Do not output a paste-back patch or call apply tools from this design skill.

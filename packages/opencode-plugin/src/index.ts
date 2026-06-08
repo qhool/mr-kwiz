@@ -88,7 +88,7 @@ const buildPrompt = (payload: BridgePayload, tokenHash: string): string => {
         'The MrKwiz admin UI selected an MCP token and requested AI editing.',
         `Selected MCP token hash: ${tokenHash}`,
         '',
-        'First call the skill tool with name "mrkwiz-quiz-author" to load the MrKwiz quiz authoring instructions.',
+        'First call the skill tool with name "mrkwiz-quiz-edit" to load the MrKwiz saved-edit instructions.',
         'Then use the MrKwiz editing tools for quiz context, validation, and saving. If dynamic mrkwiz.* MCP tools are not visible, use the visible plugin proxy tools: mrkwiz_get_quiz_context, mrkwiz_validate_edit, and mrkwiz_apply_edit.',
         '',
     ];
@@ -124,7 +124,7 @@ const buildPrompt = (payload: BridgePayload, tokenHash: string): string => {
             return [
                 ...prelude,
                 'Open this quiz for AI editing.',
-                'Start by calling get_quiz_context, summarize the current quiz, then ask what the user wants to work on.',
+                'Start by calling mrkwiz_get_quiz_context, summarize the current quiz, then ask what the user wants to work on. If the user only wants conceptual design, load mrkwiz-quiz-design before brainstorming.',
             ].join('\n');
     }
 };

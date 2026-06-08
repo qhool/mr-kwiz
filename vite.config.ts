@@ -61,6 +61,10 @@ const buildNodeRequest = async (req: import('node:http').IncomingMessage, url: U
   });
 };
 
+const isLocalApiPath = (pathname: string) => {
+  return pathname.startsWith('/api/') || pathname === '/mcp' || pathname.startsWith('/.well-known/skills');
+};
+
 export default defineConfig({
   plugins: [
     react(),
@@ -77,11 +81,24 @@ export default defineConfig({
             return;
           }
 
-          const request = await buildNodeRequest(req, url);
-          const { routeApiRequest } = await server.ssrLoadModule('/src/worker.ts') as {
-            routeApiRequest: (request: Request, env: Record<string, string>) => Promise<Response | null>;
-          };
-          const response = await routeApiRequest(request, readDevVars());
+          if (!isLocalApiPath(url.pathname)) {
+            next();
+            return;
+          }
+
+          let response: Response | null;
+          try {
+            const request = await buildNodeRequest(req, url);
+            const { routeApiRequest } = await server.ssrLoadModule('/src/worker.ts') as {
+              routeApiRequest: (request: Request, env: Record<string, string>) => Promise<Response | null>;
+            };
+            response = await routeApiRequest(request, readDevVars());
+          } catch (error) {
+            response = new Response(
+              JSON.stringify({ error: error instanceof Error ? error.message : 'Local API request failed.' }),
+              { headers: { 'content-type': 'application/json; charset=utf-8' }, status: 500 }
+            );
+          }
 
           if (response) {
             await writeNodeResponse(res, response);

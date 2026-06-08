@@ -1,22 +1,52 @@
 import Mustache from 'mustache';
 
-import skillTemplate from '../../docs/mrkwiz-quiz-author.SKILL.md.mustache?raw';
+import setupTemplate from '../../docs/mrkwiz-opencode-setup.SKILL.md.mustache?raw';
+import authorTemplate from '../../docs/mrkwiz-quiz-author.SKILL.md.mustache?raw';
+import designTemplate from '../../docs/mrkwiz-quiz-design.SKILL.md.mustache?raw';
+import editTemplate from '../../docs/mrkwiz-quiz-edit.SKILL.md.mustache?raw';
 
 import { generateSchemaDocsArtifact } from './generated-schema-reference';
 import { getGeneratedSectionTagInfoByKey } from './generated-template-sections';
 import { generateMcpToolsDocsArtifact } from './mrkwiz-mcp-tools';
 
-const SECTION_KEYS = ['mcp_tools', 'schema_reference'] as const;
+type SectionKey = 'mcp_tools' | 'schema_reference';
 
-export const renderMrKwizQuizAuthorSkill = async (): Promise<string> => {
-    const tags = getGeneratedSectionTagInfoByKey(skillTemplate, SECTION_KEYS);
-    const artifacts = {
-        mcp_tools: await generateMcpToolsDocsArtifact(),
-        schema_reference: await generateSchemaDocsArtifact(),
-    };
+export const MRKWIZ_SKILL_NAMES = [
+    'mrkwiz-opencode-setup',
+    'mrkwiz-quiz-design',
+    'mrkwiz-quiz-edit',
+    'mrkwiz-quiz-author',
+] as const;
+
+export type MrKwizSkillName = (typeof MRKWIZ_SKILL_NAMES)[number];
+
+const SKILL_TEMPLATES: Record<MrKwizSkillName, { sectionKeys: readonly SectionKey[]; template: string }> = {
+    'mrkwiz-opencode-setup': { sectionKeys: ['mcp_tools'], template: setupTemplate },
+    'mrkwiz-quiz-design': { sectionKeys: [], template: designTemplate },
+    'mrkwiz-quiz-edit': { sectionKeys: ['mcp_tools', 'schema_reference'], template: editTemplate },
+    'mrkwiz-quiz-author': { sectionKeys: [], template: authorTemplate },
+};
+
+const isMrKwizSkillName = (value: string): value is MrKwizSkillName => {
+    return (MRKWIZ_SKILL_NAMES as readonly string[]).includes(value);
+};
+
+const getArtifacts = async () => ({
+    mcp_tools: await generateMcpToolsDocsArtifact(),
+    schema_reference: await generateSchemaDocsArtifact(),
+});
+
+export const renderMrKwizSkill = async (name: string): Promise<string | null> => {
+    if (!isMrKwizSkillName(name)) return null;
+
+    const { sectionKeys, template } = SKILL_TEMPLATES[name];
+    if (sectionKeys.length === 0) return Mustache.render(template, {}).trim();
+
+    const tags = getGeneratedSectionTagInfoByKey(template, sectionKeys);
+    const artifacts = await getArtifacts();
 
     const context: Record<string, string> = {};
-    for (const sectionKey of SECTION_KEYS) {
+    for (const sectionKey of sectionKeys) {
         const tag = tags[sectionKey];
         const artifact = artifacts[sectionKey];
 
@@ -29,5 +59,11 @@ export const renderMrKwizQuizAuthorSkill = async (): Promise<string> => {
         context[tag.tagName] = artifact.markdown.trim();
     }
 
-    return Mustache.render(skillTemplate, context).trim();
+    return Mustache.render(template, context).trim();
+};
+
+export const renderMrKwizQuizAuthorSkill = async (): Promise<string> => {
+    const skill = await renderMrKwizSkill('mrkwiz-quiz-author');
+    if (!skill) throw new Error('Missing mrkwiz-quiz-author skill.');
+    return skill;
 };

@@ -15,7 +15,8 @@ type Artifact = {
 
 const TEMPLATE_CHECKS: Array<{ path: string; sectionKeys: readonly SectionKey[] }> = [
     { path: 'docs/skill-template.md.mustache', sectionKeys: ['schema_reference'] },
-    { path: 'docs/mrkwiz-quiz-author.SKILL.md.mustache', sectionKeys: ['mcp_tools', 'schema_reference'] },
+    { path: 'docs/mrkwiz-opencode-setup.SKILL.md.mustache', sectionKeys: ['mcp_tools'] },
+    { path: 'docs/mrkwiz-quiz-edit.SKILL.md.mustache', sectionKeys: ['mcp_tools', 'schema_reference'] },
 ];
 
 const buildArtifacts = async (): Promise<Record<SectionKey, Artifact>> => ({

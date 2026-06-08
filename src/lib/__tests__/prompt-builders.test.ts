@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildAdminQuestionEditPrompt } from '../admin-question-edit-prompt';
 import { renderAdminSkillPrompt } from '../admin-skill-prompt';
 import { MRKWIZ_MCP_TOOLS } from '../mrkwiz-mcp-tools';
-import { renderMrKwizQuizAuthorSkill } from '../mrkwiz-quiz-author-skill';
+import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../mrkwiz-quiz-author-skill';
 import { buildRespondentResultsPrompt } from '../respondent-results-prompt';
 import { makeAnswers, testDefinition } from './fixtures';
 
@@ -75,22 +75,59 @@ describe('renderAdminSkillPrompt', () => {
     });
 });
 
-describe('renderMrKwizQuizAuthorSkill', () => {
-    it('injects generated schema docs and every dynamic MCP tool', async () => {
-        const skill = await renderMrKwizQuizAuthorSkill();
+describe('renderMrKwizSkill', () => {
+    it('renders each hosted skill', async () => {
+        for (const skillName of MRKWIZ_SKILL_NAMES) {
+            await expect(renderMrKwizSkill(skillName)).resolves.toContain(`#`);
+        }
+    });
+
+    it('renders setup guidance with troubleshooting and plugin tools', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-opencode-setup');
+
+        expect(skill).toContain('Fresh Bootstrap Flow');
+        expect(skill).toContain('Plugin Installed But Tools Missing');
+        expect(skill).toContain('Testing Checklist');
+        expect(skill).toContain('mrkwiz_bridge_status');
+        expect(skill).toContain('mrkwiz_configure_mcp');
+        expect(skill).toContain('mrkwiz_get_quiz_context');
+        expect(skill).toContain('## mrkwiz.get_quiz_context');
+    });
+
+    it('renders design guidance without edit/apply tool instructions', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-quiz-design');
+
+        expect(skill).toContain('Trait Design');
+        expect(skill).toContain('Question Design');
+        expect(skill).toContain('Handoff To Editing');
+        expect(skill).toContain('load `mrkwiz-quiz-edit`');
+        expect(skill).not.toContain('mrkwiz_apply_edit');
+        expect(skill).not.toContain('## QuizEditPatch');
+    });
+
+    it('renders edit guidance with generated schema docs and every dynamic MCP tool', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-quiz-edit');
 
         expect(skill).toContain('## QuizEditPatch');
         expect(skill).toContain('## QuizEditOperation');
-        expect(skill).toContain('dynamic MCP tools');
         expect(skill).toContain('mrkwiz_get_quiz_context');
         expect(skill).toContain('mrkwiz_validate_edit');
         expect(skill).toContain('mrkwiz_apply_edit');
-        expect(skill).toContain('do not fall back to bridge setup/config tools for editing');
-        expect(skill).toContain('The selected token hash is for identity and status only.');
+        expect(skill).toContain('Do not use `mrkwiz_configure_mcp`');
 
         for (const tool of MRKWIZ_MCP_TOOLS) {
             expect(skill).toContain(`mrkwiz.${tool.name}`);
             expect(skill).toContain(tool.description);
         }
+    });
+
+    it('renders the legacy author skill as a short router', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-quiz-author');
+
+        expect(skill).toContain('MrKwiz Quiz Author Router');
+        expect(skill).toContain('mrkwiz-opencode-setup');
+        expect(skill).toContain('mrkwiz-quiz-design');
+        expect(skill).toContain('mrkwiz-quiz-edit');
+        expect(skill).not.toContain('## QuizEditPatch');
     });
 });
