@@ -43,6 +43,16 @@ Use the MrKwiz MCP tools when available. OpenCode exposes the hosted MCP server 
 
 Continue using the same dynamic MrKwiz MCP tool surface that provided `get_quiz_context`; do not fall back to bridge setup/config tools for editing.
 
+If the dynamic `mrkwiz.*` MCP tools are not visible in OpenCode's tool list, but the plugin proxy tools are visible, use the plugin proxy tools instead. They forward to the active selected MrKwiz MCP token:
+
+- `mrkwiz_get_quiz_context` proxies `mrkwiz.get_quiz_context`
+- `mrkwiz_get_question_context` proxies `mrkwiz.get_question_context`
+- `mrkwiz_get_edit_capabilities` proxies `mrkwiz.get_edit_capabilities`
+- `mrkwiz_validate_edit` proxies `mrkwiz.validate_edit`
+- `mrkwiz_apply_edit` proxies `mrkwiz.apply_edit`
+
+Use the dynamic `mrkwiz.*` tools or the visible `mrkwiz_*` proxy tools for editing. Do not use `mrkwiz_configure_mcp`, `mrkwiz_configure_default_model`, or bridge setup helpers as substitutes for edit tools.
+
 For every editing task:
 
 1. Call `mrkwiz.get_quiz_context` first.

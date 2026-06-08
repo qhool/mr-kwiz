@@ -36,6 +36,13 @@ type MrKwizConfig = {
     version: 1;
 };
 
+type MrKwizMcpToolName = 'get_quiz_context' | 'get_question_context' | 'get_edit_capabilities' | 'validate_edit' | 'apply_edit';
+
+type JsonRpcResponse = {
+    error?: unknown;
+    result?: unknown;
+};
+
 const emptyConfig = (): MrKwizConfig => ({ activeTokenHash: null, defaultModel: null, tokens: [], version: 1 });
 
 const parseModel = (value: string): ModelConfig => {
@@ -82,7 +89,7 @@ const buildPrompt = (payload: BridgePayload, tokenHash: string): string => {
         `Selected MCP token hash: ${tokenHash}`,
         '',
         'First call the skill tool with name "mrkwiz-quiz-author" to load the MrKwiz quiz authoring instructions.',
-        'Then use the mrkwiz MCP tools for quiz context, validation, and saving.',
+        'Then use the MrKwiz editing tools for quiz context, validation, and saving. If dynamic mrkwiz.* MCP tools are not visible, use the visible plugin proxy tools: mrkwiz_get_quiz_context, mrkwiz_validate_edit, and mrkwiz_apply_edit.',
         '',
     ];
 
@@ -245,6 +252,58 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes'],
             tokens: config.tokens.map((entry) => publicTokenStatus(entry, mcp)),
         };
+    };
+
+    const activeToken = (): StoredToken => {
+        if (!config.activeTokenHash) {
+            throw new Error('No active MrKwiz MCP token is selected. Open this quiz from the MrKwiz admin UI or use mrkwiz_bridge_status to inspect token state.');
+        }
+
+        const entry = config.tokens.find((token) => token.tokenHash === config.activeTokenHash);
+        if (!entry) {
+            throw new Error(`Active MrKwiz MCP token hash ${config.activeTokenHash} was not found in local plugin config.`);
+        }
+
+        return entry;
+    };
+
+    const formatMcpToolResult = (result: unknown): string => {
+        if (result && typeof result === 'object' && Array.isArray((result as { content?: unknown }).content)) {
+            const content = (result as { content: Array<{ text?: unknown; type?: unknown }> }).content;
+            const text = content
+                .filter((item) => item?.type === 'text' && typeof item.text === 'string')
+                .map((item) => item.text)
+                .join('\n');
+            if (text) return text;
+        }
+
+        return JSON.stringify(result, null, 2);
+    };
+
+    const callActiveMcpTool = async (name: MrKwizMcpToolName, args: Record<string, unknown>) => {
+        const entry = activeToken();
+        await debug('Visible MrKwiz MCP proxy invoked.', { name, token_hash: entry.tokenHash });
+
+        const response = await fetch(`${entry.baseUrl}/mcp`, {
+            body: JSON.stringify({
+                id: `plugin-proxy-${name}-${Date.now()}`,
+                jsonrpc: '2.0',
+                method: 'tools/call',
+                params: { arguments: args, name },
+            }),
+            headers: {
+                authorization: `Bearer ${entry.token}`,
+                'content-type': 'application/json',
+            },
+            method: 'POST',
+        });
+
+        const body = (await response.json().catch(() => ({}))) as JsonRpcResponse;
+        if (!response.ok || body.error) {
+            throw new Error(JSON.stringify(body.error ?? body));
+        }
+
+        return formatMcpToolResult(body.result);
     };
 
     const registerCallbackOnce = async (entry: StoredToken) => {
@@ -560,6 +619,47 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     const currentStatus = await status();
                     await debug('mrkwiz_bridge_status invoked.', currentStatus);
                     return JSON.stringify(currentStatus, null, 2);
+                },
+            }),
+            mrkwiz_get_quiz_context: tool({
+                args: {},
+                description: 'Visible plugin proxy for mrkwiz.get_quiz_context. Gets the current quiz context for the active MrKwiz MCP token.',
+                async execute() {
+                    return callActiveMcpTool('get_quiz_context', {});
+                },
+            }),
+            mrkwiz_get_question_context: tool({
+                args: {
+                    question_id: tool.schema.string().describe('Question ID to fetch, required before replacing or deleting that question.'),
+                },
+                description: 'Visible plugin proxy for mrkwiz.get_question_context. Gets a full question, trait order, and old_question_hash for safe editing.',
+                async execute(args) {
+                    return callActiveMcpTool('get_question_context', args);
+                },
+            }),
+            mrkwiz_get_edit_capabilities: tool({
+                args: {},
+                description: 'Visible plugin proxy for mrkwiz.get_edit_capabilities. Lists supported edit operations for the active quiz state.',
+                async execute() {
+                    return callActiveMcpTool('get_edit_capabilities', {});
+                },
+            }),
+            mrkwiz_validate_edit: tool({
+                args: {
+                    patch: tool.schema.any().describe('QuizEditPatch object to validate without saving.'),
+                },
+                description: 'Visible plugin proxy for mrkwiz.validate_edit. Validates a QuizEditPatch against the active quiz without saving it.',
+                async execute(args) {
+                    return callActiveMcpTool('validate_edit', args);
+                },
+            }),
+            mrkwiz_apply_edit: tool({
+                args: {
+                    patch: tool.schema.any().describe('Validated QuizEditPatch object to apply to the active quiz.'),
+                },
+                description: 'Visible plugin proxy for mrkwiz.apply_edit. Applies a validated QuizEditPatch to the active quiz.',
+                async execute(args) {
+                    return callActiveMcpTool('apply_edit', args);
                 },
             }),
             mrkwiz_configure_mcp: tool({

@@ -82,6 +82,9 @@ describe('renderMrKwizQuizAuthorSkill', () => {
         expect(skill).toContain('## QuizEditPatch');
         expect(skill).toContain('## QuizEditOperation');
         expect(skill).toContain('dynamic MCP tools');
+        expect(skill).toContain('mrkwiz_get_quiz_context');
+        expect(skill).toContain('mrkwiz_validate_edit');
+        expect(skill).toContain('mrkwiz_apply_edit');
         expect(skill).toContain('do not fall back to bridge setup/config tools for editing');
         expect(skill).toContain('The selected token hash is for identity and status only.');
 
