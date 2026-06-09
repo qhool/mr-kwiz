@@ -17,7 +17,7 @@ The desired end state is:
 - OpenCode has `@mrkwiz/opencode-plugin` installed.
 - `.opencode/mrkwiz.json` stores the raw MCP token locally and is not committed.
 - `mrkwiz_bridge_status` shows the token hash and callback URL.
-- The MrKwiz admin AI page shows the token as connected.
+- The MrKwiz admin Edit page OpenCode section shows the token as connected.
 - Clicking an OpenCode action in MrKwiz makes that token active.
 - Visible edit proxy tools work, especially `mrkwiz_get_quiz_context`.
 - If a pending user request exists, `mrkwiz_do_pending_request` successfully continues it.
@@ -38,7 +38,7 @@ Use this when the user pasted a bootstrap prompt with a raw MCP token.
 2. Check whether `mrkwiz_configure_default_model` and `mrkwiz_configure_mcp` are visible.
 3. Call `mrkwiz_configure_default_model` with the exact provider/model from the current OpenCode session, for example `mrkwiz_configure_default_model({ "model": "provider/model-id" })`.
 4. Call `mrkwiz_configure_mcp` with the raw token, base URL, and label from the bootstrap prompt.
-5. Tell the user to refresh the MrKwiz admin AI page.
+5. Tell the user to refresh the MrKwiz admin Edit page.
 6. Confirm the token shows as connected.
 7. Tell the user to click an OpenCode action from the MrKwiz admin page to make the token active.
 8. After activation, test with `mrkwiz_get_quiz_context`.
@@ -69,9 +69,9 @@ Recommended config shape:
 
 If `mrkwiz_bridge_status` shows a token as connected but not active:
 
-1. Tell the user to refresh the MrKwiz admin AI page.
+1. Tell the user to refresh the MrKwiz admin Edit page.
 2. If the admin page still shows no OpenCode buttons or a stale callback, call `mrkwiz_reset_callback_urls`.
-3. Tell the user to refresh the MrKwiz admin AI page again.
+3. Tell the user to refresh the MrKwiz admin Edit page again.
 4. Tell the user to click `Open in OpenCode` or a focused edit action for that token.
 5. The plugin callback will activate the token and send a new prompt.
 6. In the new prompt, load `mrkwiz-quiz-edit` for saved quiz changes.
@@ -86,7 +86,7 @@ If the selected token is active but editing tools fail:
 2. Confirm `active_token_hash` matches the intended token hash from the MrKwiz admin page.
 3. Try `mrkwiz_get_quiz_context`.
 4. If dynamic `mrkwiz.*` tools are visible, `mrkwiz.get_quiz_context` is equivalent.
-5. If the error says expired or revoked, guide the user to create a replacement token from the MrKwiz admin AI page and paste the new bootstrap prompt.
+5. If the error says expired or revoked, guide the user to create a replacement token from the MrKwiz admin Edit page OpenCode section and paste the new bootstrap prompt.
 
 ## After Fixing Diagnostics
 
@@ -109,7 +109,7 @@ Use this checklist after setup changes:
 2. `default_model` is set if the plugin creates MrKwiz sessions.
 3. The intended token appears in `tokens`.
 4. The token has a `callback_url`.
-5. The MrKwiz admin AI page shows the token connected.
+5. The MrKwiz admin Edit page OpenCode section shows the token connected.
 6. After clicking an admin OpenCode action, `active_token_hash` is set.
 7. `mrkwiz_get_quiz_context` returns quiz context.
 

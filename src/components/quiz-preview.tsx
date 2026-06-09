@@ -61,7 +61,8 @@ const useTheme = (themeColors?: ThemeColors) => {
     return { colors, ui };
 };
 
-export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: string; subtitle?: string; themeColors?: ThemeColors; title: string }>> = ({
+export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ action?: React.ReactNode; eyebrow?: string; subtitle?: string; themeColors?: ThemeColors; title: string }>> = ({
+    action,
     children,
     eyebrow = 'Preview Surface',
     subtitle,
@@ -88,8 +89,13 @@ export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: st
                 <p style={{ color: colors.muted_text, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.08em', margin: 0, textTransform: 'uppercase' }}>
                     {eyebrow}
                 </p>
-                <h2 style={{ color: colors.heading_text, fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
-                {subtitle ? <p style={{ color: colors.body_text, margin: 0 }}>{subtitle}</p> : null}
+                <div style={{ alignItems: 'flex-start', display: 'flex', flexWrap: 'wrap', gap: '1rem', justifyContent: 'space-between' }}>
+                    <div style={{ minWidth: 0 }}>
+                        <h2 style={{ color: colors.heading_text, fontSize: '2rem', margin: '0.35rem 0 0.25rem' }}>{title}</h2>
+                        {subtitle ? <p style={{ color: colors.body_text, margin: 0 }}>{subtitle}</p> : null}
+                    </div>
+                    {action ? <div>{action}</div> : null}
+                </div>
             </div>
             <div style={shellStyle}>{children}</div>
         </section>
@@ -97,17 +103,18 @@ export const QuizPreviewSurface: React.FC<React.PropsWithChildren<{ eyebrow?: st
 };
 
 export const QuizIntroScreen: React.FC<{
+    action?: React.ReactNode;
     definition: QuizDefinition;
     emptyStateMessage?: string;
     suppressDefaultAdminIntro?: boolean;
-}> = ({ definition, emptyStateMessage = 'No intro markdown is defined yet.', suppressDefaultAdminIntro = false }) => {
+}> = ({ action, definition, emptyStateMessage = 'No intro markdown is defined yet.', suppressDefaultAdminIntro = false }) => {
     const introMarkdown =
         suppressDefaultAdminIntro && definition.display_config.intro_markdown === defaultAdminIntroMarkdown
             ? undefined
             : definition.display_config.intro_markdown;
 
     return (
-        <QuizPreviewSurface subtitle={definition.description || 'No description provided yet.'} themeColors={definition.display_config.theme_colors} title={definition.title}>
+        <QuizPreviewSurface action={action} subtitle={definition.description || 'No description provided yet.'} themeColors={definition.display_config.theme_colors} title={definition.title}>
             {introMarkdown ? (
                 renderMarkdown(introMarkdown)
             ) : (
@@ -314,6 +321,7 @@ export const QuizQuestionScreen: React.FC<{
 
 export const QuizResultsScreen: React.FC<{
     archetypeNameTemplate?: string;
+    bottomAction?: React.ReactNode;
     completionMarkdown?: string;
     eyebrow?: string;
     scaleMax: number;
@@ -326,7 +334,8 @@ export const QuizResultsScreen: React.FC<{
     traits: Trait[];
     traitPolarity: 'bidirectional' | 'unidirectional';
     traitStats?: Record<string, TraitStatistics>;
-}> = ({ archetypeNameTemplate, completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', themeColors, traits, traitPolarity, traitStats }) => {
+    topAction?: React.ReactNode;
+}> = ({ archetypeNameTemplate, bottomAction, completionMarkdown, eyebrow, scaleMax, scaleMin, scores, selectedArchetype, subtitle, title = 'Results Preview', themeColors, traits, traitPolarity, traitStats, topAction }) => {
     const selectedArchetypeDisplay = React.useMemo(
         () => getSelectedArchetypeDisplay(selectedArchetype, archetypeNameTemplate),
         [archetypeNameTemplate, selectedArchetype]
@@ -353,6 +362,7 @@ export const QuizResultsScreen: React.FC<{
 
     return (
         <QuizPreviewSurface eyebrow={eyebrow} subtitle={subtitle ?? 'Admin preview using simulated trait scores.'} themeColors={themeColors} title={title}>
+            {topAction ? <div style={{ marginBottom: '1rem' }}>{topAction}</div> : null}
             {completionMarkdown ? <div style={{ marginBottom: '1.5rem' }}>{renderMarkdown(completionMarkdown)}</div> : null}
             {traits.length === 0 ? (
                 <div style={{ ...emptyStateStyle, background: resolvedTheme.page_background, border: `1px dashed ${resolvedTheme.panel_border}`, color: resolvedTheme.muted_text }}>
@@ -412,6 +422,7 @@ export const QuizResultsScreen: React.FC<{
                     ) : null}
                 </div>
             )}
+            {bottomAction ? <div style={{ marginTop: '1rem' }}>{bottomAction}</div> : null}
         </QuizPreviewSurface>
     );
 };

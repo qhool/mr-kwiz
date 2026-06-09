@@ -14,7 +14,7 @@ const bridgeActionSchema = {
     safeParse(value: unknown): { success: true; data: { action: string; payload: Record<string, unknown> } } | { success: false } {
         if (!value || typeof value !== 'object') return { success: false };
         const input = value as Record<string, unknown>;
-        if (!['open-quiz', 'edit-theme', 'edit-archetypes', 'edit-question'].includes(String(input.action ?? ''))) return { success: false };
+        if (!['open-quiz', 'edit-theme', 'edit-archetypes', 'edit-question', 'edit-intro', 'edit-scoring'].includes(String(input.action ?? ''))) return { success: false };
         const payload = input.payload && typeof input.payload === 'object' ? input.payload as Record<string, unknown> : {};
         return { success: true, data: { action: String(input.action), payload } };
     },
@@ -256,16 +256,20 @@ export const handleAdminMcpTokenCallbackStatusGet = async (
         const token = result.token;
 
         if (!token.callback_url) {
-            return json({ connected: false, error: 'This MCP token does not have a registered OpenCode callback URL.' }, { status: 404 });
+            return json({ connected: false, error: 'This MCP token does not have a registered OpenCode callback URL.' });
         }
 
-        const response = await fetchWithTimeout(`${token.callback_url.replace(/\/$/, '')}/status`);
-        const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
-        if (!response.ok) {
-            return json({ connected: false, error: typeof body.error === 'string' ? body.error : 'OpenCode bridge status check failed.' }, { status: 502 });
-        }
+        try {
+            const response = await fetchWithTimeout(`${token.callback_url.replace(/\/$/, '')}/status`);
+            const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+            if (!response.ok) {
+                return json({ connected: false, error: typeof body.error === 'string' ? body.error : 'OpenCode bridge status check failed.' });
+            }
 
-        return json(body);
+            return json(body);
+        } catch (error) {
+            return json({ connected: false, error: error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' });
+        }
     } catch (error) {
         return json({ connected: false, error: error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' }, { status: 502 });
     }

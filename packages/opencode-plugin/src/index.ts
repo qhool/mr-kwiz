@@ -5,7 +5,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 
-type BridgeAction = 'open_quiz' | 'edit_question' | 'edit_theme' | 'edit_archetypes';
+type BridgeAction = 'open_quiz' | 'edit_question' | 'edit_theme' | 'edit_archetypes' | 'edit_intro' | 'edit_scoring';
 
 type BridgePayload = {
     action?: BridgeAction;
@@ -47,6 +47,14 @@ type StoredToken = {
     tokenHash: string;
 };
 
+type StoredQuizSession = {
+    createdAt: string;
+    quizId: string;
+    quizTitle?: string;
+    sessionId: string;
+    updatedAt: string;
+};
+
 type ModelConfig = {
     modelID: string;
     providerID: string;
@@ -56,6 +64,7 @@ type MrKwizConfig = {
     activeTokenHash: string | null;
     defaultModel: ModelConfig | null;
     pendingRequest?: PendingBridgeRequest | null;
+    quizSessions: Record<string, StoredQuizSession>;
     tokens: StoredToken[];
     version: 1;
 };
@@ -67,10 +76,10 @@ type JsonRpcResponse = {
     result?: unknown;
 };
 
-const emptyConfig = (): MrKwizConfig => ({ activeTokenHash: null, defaultModel: null, pendingRequest: null, tokens: [], version: 1 });
+const emptyConfig = (): MrKwizConfig => ({ activeTokenHash: null, defaultModel: null, pendingRequest: null, quizSessions: {}, tokens: [], version: 1 });
 
 const isBridgeAction = (value: unknown): value is BridgeAction => {
-    return value === 'open_quiz' || value === 'edit_question' || value === 'edit_theme' || value === 'edit_archetypes';
+    return value === 'open_quiz' || value === 'edit_question' || value === 'edit_theme' || value === 'edit_archetypes' || value === 'edit_intro' || value === 'edit_scoring';
 };
 
 const parsePendingRequest = (value: unknown): PendingBridgeRequest | null => {
@@ -87,6 +96,28 @@ const parsePendingRequest = (value: unknown): PendingBridgeRequest | null => {
         payload: input.payload,
         tokenHash: input.tokenHash,
     };
+};
+
+const parseQuizSessions = (value: unknown): Record<string, StoredQuizSession> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const sessions: Record<string, StoredQuizSession> = {};
+
+    for (const [quizId, rawSession] of Object.entries(value as Record<string, unknown>)) {
+        if (!rawSession || typeof rawSession !== 'object' || Array.isArray(rawSession)) continue;
+        const input = rawSession as Partial<StoredQuizSession>;
+        const sessionQuizId = typeof input.quizId === 'string' && input.quizId ? input.quizId : quizId;
+        if (!sessionQuizId || typeof input.sessionId !== 'string' || !input.sessionId) continue;
+        const now = new Date().toISOString();
+        sessions[sessionQuizId] = {
+            createdAt: typeof input.createdAt === 'string' && input.createdAt ? input.createdAt : now,
+            quizId: sessionQuizId,
+            quizTitle: typeof input.quizTitle === 'string' ? input.quizTitle : undefined,
+            sessionId: input.sessionId,
+            updatedAt: typeof input.updatedAt === 'string' && input.updatedAt ? input.updatedAt : now,
+        };
+    }
+
+    return sessions;
 };
 
 const parseModel = (value: string): ModelConfig => {
@@ -165,6 +196,16 @@ const buildDesignPrompt = (request: BridgeRequest, diagnostics: DiagnosticReport
                 ...lines,
                 'The user clicked a theme/display-focused action.',
             ].join('\n');
+        case 'edit_intro':
+            return [
+                ...lines,
+                'The user clicked an intro/title/description-focused action.',
+            ].join('\n');
+        case 'edit_scoring':
+            return [
+                ...lines,
+                'The user clicked a scoring/results-display-focused action.',
+            ].join('\n');
         case 'edit_archetypes':
             return [
                 ...lines,
@@ -199,6 +240,10 @@ const titleForAction = (payload: BridgePayload): string => {
             return `MrKwiz: edit ${payload.question_id ?? 'question'} in ${quizTitle}`;
         case 'edit_theme':
             return `MrKwiz: edit theme for ${quizTitle}`;
+        case 'edit_intro':
+            return `MrKwiz: edit intro for ${quizTitle}`;
+        case 'edit_scoring':
+            return `MrKwiz: edit scoring for ${quizTitle}`;
         case 'edit_archetypes':
             return `MrKwiz: edit archetypes for ${quizTitle}`;
         case 'open_quiz':
@@ -234,6 +279,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 activeTokenHash: null,
                 defaultModel: null,
                 pendingRequest: null,
+                quizSessions: {},
                 tokens: [
                     {
                         baseUrl: normalizeBaseUrl(),
@@ -255,6 +301,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     ? { modelID: parsed.defaultModel.modelID, providerID: parsed.defaultModel.providerID }
                     : null,
             pendingRequest: parsePendingRequest(parsed.pendingRequest),
+            quizSessions: parseQuizSessions(parsed.quizSessions),
             tokens: Array.isArray(parsed.tokens)
                 ? parsed.tokens
                       .filter((entry): entry is StoredToken => !!entry && typeof entry.token === 'string')
@@ -320,7 +367,17 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                   }
                 : null,
             running: true,
-            supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes'],
+            quiz_sessions: Object.fromEntries(
+                Object.entries(config.quizSessions).map(([quizId, session]) => [
+                    quizId,
+                    {
+                        quiz_title: session.quizTitle ?? null,
+                        session_id: session.sessionId,
+                        updated_at: session.updatedAt,
+                    },
+                ])
+            ),
+            supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes', 'edit_intro', 'edit_scoring'],
             tokens: config.tokens.map((entry) => publicTokenStatus(entry, mcp)),
         };
     };
@@ -590,8 +647,18 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         return { checks, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
     };
 
-    const sendPrompt = async (prompt: string, payload: BridgePayload) => {
-        const model = config.defaultModel ? { modelID: config.defaultModel.modelID, providerID: config.defaultModel.providerID } : undefined;
+    const promptSession = async (sessionId: string, prompt: string, model: ModelConfig | undefined) => {
+        await client.session.promptAsync({
+            body: {
+                model,
+                parts: [{ text: prompt, type: 'text' }],
+            },
+            path: { id: sessionId },
+            query: { directory },
+        });
+    };
+
+    const createSessionForPrompt = async (prompt: string, payload: BridgePayload, model: ModelConfig | undefined) => {
         const session = await client.session.create({
             body: { title: titleForAction(payload) },
             query: { directory },
@@ -601,17 +668,54 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             throw new Error('OpenCode did not return a session id.');
         }
 
-        await client.session.promptAsync({
-            body: {
-                model,
-                parts: [{ text: prompt, type: 'text' }],
-            },
-            path: { id: session.data.id },
-            query: { directory },
-        });
+        await promptSession(session.data.id, prompt, model);
 
         await debug('Created MrKwiz OpenCode session.', { session_id: session.data.id, title: titleForAction(payload) });
         return session.data;
+    };
+
+    const sendPrompt = async (prompt: string, payload: BridgePayload) => {
+        const model = config.defaultModel ? { modelID: config.defaultModel.modelID, providerID: config.defaultModel.providerID } : undefined;
+        const quizId = payload.quiz_id?.trim();
+        const existingSession = quizId ? config.quizSessions[quizId] : undefined;
+
+        if (quizId && existingSession) {
+            try {
+                await promptSession(existingSession.sessionId, prompt, model);
+                const now = new Date().toISOString();
+                config.quizSessions[quizId] = {
+                    ...existingSession,
+                    quizTitle: payload.quiz_title ?? existingSession.quizTitle,
+                    updatedAt: now,
+                };
+                await saveConfig();
+                await debug('Reused MrKwiz OpenCode session.', { quiz_id: quizId, session_id: existingSession.sessionId, title: titleForAction(payload) });
+                return { id: existingSession.sessionId };
+            } catch (error) {
+                await debug('Stored MrKwiz OpenCode session could not be reused; creating replacement.', {
+                    error: error instanceof Error ? error.message : String(error),
+                    quiz_id: quizId,
+                    session_id: existingSession.sessionId,
+                });
+                delete config.quizSessions[quizId];
+                await saveConfig();
+            }
+        }
+
+        const session = await createSessionForPrompt(prompt, payload, model);
+        if (quizId) {
+            const now = new Date().toISOString();
+            config.quizSessions[quizId] = {
+                createdAt: now,
+                quizId,
+                quizTitle: payload.quiz_title,
+                sessionId: session.id,
+                updatedAt: now,
+            };
+            await saveConfig();
+            await debug('Tracked MrKwiz OpenCode session for quiz.', { quiz_id: quizId, session_id: session.id, title: titleForAction(payload) });
+        }
+        return session;
     };
 
     const storePendingRequest = async (request: BridgeRequest, diagnosticReport: DiagnosticReport): Promise<PendingBridgeRequest> => {
@@ -722,7 +826,9 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
         const actionByPath: Record<string, BridgeAction> = {
             'edit-archetypes': 'edit_archetypes',
+            'edit-intro': 'edit_intro',
             'edit-question': 'edit_question',
+            'edit-scoring': 'edit_scoring',
             'edit-theme': 'edit_theme',
             'open-quiz': 'open_quiz',
         };

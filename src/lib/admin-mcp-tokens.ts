@@ -63,7 +63,7 @@ export const getQuizMcpTokenStatus = (
 export const buildMcpTokenExpiredRecoveryInstructions = (): string[] => [
     'Tell the user their MrKwiz OpenCode token has expired.',
     'Ask them to open the MrKwiz admin page for this quiz.',
-    'Guide them to AI Editing > MCP Tokens.',
+    'Guide them to Edit > OpenCode Editing.',
     'Have them create a new OpenCode token.',
     'Have them paste the new bootstrap prompt into this OpenCode session.',
     'Do not ask for the quiz admin token unless the user explicitly chooses manual setup.',

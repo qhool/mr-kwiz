@@ -14,7 +14,8 @@ type TraitFilterState = {
 
 type AdminPreviewQuestionsPanelProps = {
     definition: QuizDefinition;
-    onCopyQuestionEditPrompt: (question: Question) => Promise<void>;
+    editQuestionLabel?: string;
+    onEditQuestion: (question: Question) => Promise<void>;
 };
 
 type QuestionTraitMetrics = {
@@ -70,7 +71,8 @@ const questionHeaderTextStyle: React.CSSProperties = {
 
 export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProps> = ({
     definition,
-    onCopyQuestionEditPrompt,
+    editQuestionLabel = 'Edit This Question in Chat',
+    onEditQuestion,
 }) => {
     const colors = React.useMemo(() => resolveThemeColors(definition.display_config.theme_colors), [definition.display_config.theme_colors]);
     const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
@@ -619,7 +621,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                                                     <button
                                                         onClick={() => {
-                                                            void onCopyQuestionEditPrompt(question);
+                                                            void onEditQuestion(question);
                                                         }}
                                                         style={{
                                                             alignItems: 'center',
@@ -638,7 +640,7 @@ export const AdminPreviewQuestionsPanel: React.FC<AdminPreviewQuestionsPanelProp
                                                             <path d="M4 20h4l10.5-10.5a1.414 1.414 0 0 0 0-2L16.5 5a1.414 1.414 0 0 0-2 0L4 15.5V20Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
                                                             <path d="m13.5 6 4.5 4.5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
                                                         </svg>
-                                                        Edit This Question in Chat
+                                                        {editQuestionLabel}
                                                     </button>
                                                 </div>
 
