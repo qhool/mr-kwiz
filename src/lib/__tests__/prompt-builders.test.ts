@@ -90,6 +90,7 @@ describe('renderMrKwizSkill', () => {
         expect(skill).toContain('Testing Checklist');
         expect(skill).toContain('mrkwiz_bridge_status');
         expect(skill).toContain('mrkwiz_reset_callback_urls');
+        expect(skill).toContain('mrkwiz_do_pending_request');
         expect(skill).toContain('mrkwiz_configure_mcp');
         expect(skill).toContain('mrkwiz_get_quiz_context');
         expect(skill).toContain('## mrkwiz.get_quiz_context');
@@ -100,6 +101,8 @@ describe('renderMrKwizSkill', () => {
 
         expect(skill).toContain('Trait Design');
         expect(skill).toContain('Question Design');
+        expect(skill).toContain('First Steps');
+        expect(skill).toContain('Read any pending user request');
         expect(skill).toContain('Handoff To Editing');
         expect(skill).toContain('load `mrkwiz-quiz-edit`');
         expect(skill).not.toContain('mrkwiz_apply_edit');

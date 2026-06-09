@@ -5,9 +5,18 @@ description: Use for MrKwiz quiz concept design, traits, questions, scoring inte
 
 # MrKwiz Quiz Design
 
-Use this skill for conceptual quiz authoring and review. Assume OpenCode/MCP setup is already correct.
+Use this skill as the main entrypoint for AI-assisted quiz work after plugin diagnostics pass. Assume OpenCode/MCP setup is already correct.
 
-Do not apply saved changes from this skill. If the user wants to save or update the quiz, load `mrkwiz-quiz-edit`.
+Do not apply saved changes from this skill. If the user asks to apply, save, update, commit, or make the change in MrKwiz, immediately load `mrkwiz-quiz-edit` and follow that skill's patch workflow.
+
+## First Steps
+
+1. Read any pending user request included in the prompt.
+2. Call `mrkwiz_get_quiz_context` to explore the existing quiz definition.
+3. Summarize the current quiz: goal/title, traits, question count, ordering mode, and archetype state.
+4. If the pending request targets a specific question, call `mrkwiz_get_question_context` for that question.
+5. Ask what the user wants to change, or discuss the specific requested target if the prompt already includes one.
+6. Stay in design/discussion mode until the user explicitly asks to apply or save a change.
 
 ## Working Mode
 
@@ -34,6 +43,8 @@ Use the visible plugin tools by default because they are easiest to see:
 - `mrkwiz_get_edit_capabilities` only if planning a future saved edit.
 
 If dynamic `mrkwiz.*` MCP tools are visible, they are equivalent.
+
+Explore before proposing saved changes. For existing quizzes, identify current trait order, locked trait structure, question IDs, archetypes, theme/display settings, and scoring/adaptive configuration before recommending edits.
 
 ## Quiz Model
 

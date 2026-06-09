@@ -16,6 +16,29 @@ type BridgePayload = {
     quiz_title?: string;
 };
 
+type BridgeRequest = {
+    action: BridgeAction;
+    payload: BridgePayload;
+    tokenHash: string;
+};
+
+type DiagnosticCheck = {
+    details?: Record<string, unknown>;
+    message: string;
+    ok: boolean;
+};
+
+type DiagnosticReport = {
+    checks: DiagnosticCheck[];
+    ok: boolean;
+    token_hash: string;
+};
+
+type PendingBridgeRequest = BridgeRequest & {
+    createdAt: string;
+    diagnosticReport?: DiagnosticReport;
+};
+
 type StoredToken = {
     baseUrl: string;
     createdAt: string;
@@ -32,6 +55,7 @@ type ModelConfig = {
 type MrKwizConfig = {
     activeTokenHash: string | null;
     defaultModel: ModelConfig | null;
+    pendingRequest?: PendingBridgeRequest | null;
     tokens: StoredToken[];
     version: 1;
 };
@@ -43,7 +67,27 @@ type JsonRpcResponse = {
     result?: unknown;
 };
 
-const emptyConfig = (): MrKwizConfig => ({ activeTokenHash: null, defaultModel: null, tokens: [], version: 1 });
+const emptyConfig = (): MrKwizConfig => ({ activeTokenHash: null, defaultModel: null, pendingRequest: null, tokens: [], version: 1 });
+
+const isBridgeAction = (value: unknown): value is BridgeAction => {
+    return value === 'open_quiz' || value === 'edit_question' || value === 'edit_theme' || value === 'edit_archetypes';
+};
+
+const parsePendingRequest = (value: unknown): PendingBridgeRequest | null => {
+    if (!value || typeof value !== 'object') return null;
+    const input = value as Partial<PendingBridgeRequest>;
+    if (!isBridgeAction(input.action)) return null;
+    if (!input.payload || typeof input.payload !== 'object') return null;
+    if (typeof input.tokenHash !== 'string' || !input.tokenHash) return null;
+    if (typeof input.createdAt !== 'string' || !input.createdAt) return null;
+    return {
+        action: input.action,
+        createdAt: input.createdAt,
+        diagnosticReport: input.diagnosticReport,
+        payload: input.payload,
+        tokenHash: input.tokenHash,
+    };
+};
 
 const parseModel = (value: string): ModelConfig => {
     const trimmed = value.trim();
@@ -83,50 +127,69 @@ const normalizeBaseUrl = (value?: string): string => (value?.trim() || process.e
 
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
-const buildPrompt = (payload: BridgePayload, tokenHash: string): string => {
-    const prelude = [
-        'The MrKwiz admin UI selected an MCP token and requested AI editing.',
-        `Selected MCP token hash: ${tokenHash}`,
-        '',
-        'First call the skill tool with name "mrkwiz-quiz-edit" to load the MrKwiz saved-edit instructions.',
-        'Then use the MrKwiz editing tools for quiz context, validation, and saving. If dynamic mrkwiz.* MCP tools are not visible, use the visible plugin proxy tools: mrkwiz_get_quiz_context, mrkwiz_validate_edit, and mrkwiz_apply_edit.',
-        '',
+const formatDiagnosticReport = (report: DiagnosticReport): string => JSON.stringify(report, null, 2);
+
+const formatPendingRequest = (request: BridgeRequest | PendingBridgeRequest): string => {
+    return JSON.stringify(
+        {
+            action: request.action,
+            payload: request.payload,
+            token_hash: request.tokenHash,
+            ...('createdAt' in request ? { created_at: request.createdAt } : {}),
+        },
+        null,
+        2
+    );
+};
+
+const buildDesignPrompt = (request: BridgeRequest, diagnostics: DiagnosticReport): string => {
+    void diagnostics;
+
+    const lines = [
+        'The MrKwiz admin UI opened the current quiz for AI assistance.',
+        'First call the skill tool with name "mrkwiz-quiz-design".',
+        'Follow that skill to inspect the current quiz, describe its state, and ask the user what they want to work on.',
     ];
 
-    switch (payload.action) {
+    switch (request.action) {
         case 'edit_question':
             return [
-                ...prelude,
-                `Edit question ${payload.question_id}.`,
-                `Quiz title: ${payload.quiz_title ?? 'unknown'}`,
-                `Definition version shown in UI: ${payload.definition_version ?? 'unknown'}`,
-                `Question ID: ${payload.question_id}`,
-                payload.old_question_hash ? `Old question hash from UI: ${payload.old_question_hash}` : '',
+                ...lines,
+                request.payload.question_id ? `The user clicked a question-focused action for question ${request.payload.question_id}.` : '',
                 '',
-                'Call get_question_context for this question. Ask the user what they want changed. Validate the edit before applying it. Apply only after user confirmation unless the user clearly requested immediate application.',
             ]
                 .filter(Boolean)
                 .join('\n');
         case 'edit_theme':
             return [
-                ...prelude,
-                'Edit theme/display settings.',
-                'Fetch quiz context, prefer merge_at_path or replace_at_path for display_config/theme_colors edits, validate before applying, and ask for confirmation before saving unless the user clearly requested immediate application.',
+                ...lines,
+                'The user clicked a theme/display-focused action.',
             ].join('\n');
         case 'edit_archetypes':
             return [
-                ...prelude,
-                'Edit archetypes.',
-                'Fetch quiz context, use explicit archetype operations, validate before applying, and ask for confirmation before saving unless the user clearly requested immediate application.',
+                ...lines,
+                'The user clicked an archetype-focused action.',
             ].join('\n');
         case 'open_quiz':
         default:
-            return [
-                ...prelude,
-                'Open this quiz for AI editing.',
-                'Start by calling mrkwiz_get_quiz_context, summarize the current quiz, then ask what the user wants to work on. If the user only wants conceptual design, load mrkwiz-quiz-design before brainstorming.',
-            ].join('\n');
+            return lines.join('\n');
     }
+};
+
+const buildSetupPrompt = (request: PendingBridgeRequest, diagnostics: DiagnosticReport): string => {
+    return [
+        'The MrKwiz admin UI selected an MCP token and requested quiz work, but connection diagnostics failed.',
+        '',
+        'First call the skill tool with name "mrkwiz-opencode-setup" to load the MrKwiz setup/troubleshooting instructions.',
+        'Resolve the diagnostic failures. When issues are resolved, call mrkwiz_do_pending_request to continue the original user request without asking the user to click the admin UI again.',
+        '',
+        `Pending request created at: ${request.createdAt}`,
+        'Pending user request:',
+        formatPendingRequest(request),
+        '',
+        'Diagnostic report:',
+        formatDiagnosticReport(diagnostics),
+    ].join('\n');
 };
 
 const titleForAction = (payload: BridgePayload): string => {
@@ -170,6 +233,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             return {
                 activeTokenHash: null,
                 defaultModel: null,
+                pendingRequest: null,
                 tokens: [
                     {
                         baseUrl: normalizeBaseUrl(),
@@ -190,6 +254,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 parsed.defaultModel && typeof parsed.defaultModel.providerID === 'string' && typeof parsed.defaultModel.modelID === 'string'
                     ? { modelID: parsed.defaultModel.modelID, providerID: parsed.defaultModel.providerID }
                     : null,
+            pendingRequest: parsePendingRequest(parsed.pendingRequest),
             tokens: Array.isArray(parsed.tokens)
                 ? parsed.tokens
                       .filter((entry): entry is StoredToken => !!entry && typeof entry.token === 'string')
@@ -247,6 +312,13 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             directory,
             mcp_name: mcp.name,
             mcp_status: mcp.status,
+            pending_request: config.pendingRequest
+                ? {
+                      action: config.pendingRequest.action,
+                      created_at: config.pendingRequest.createdAt,
+                      token_hash: config.pendingRequest.tokenHash,
+                  }
+                : null,
             running: true,
             supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes'],
             tokens: config.tokens.map((entry) => publicTokenStatus(entry, mcp)),
@@ -279,10 +351,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         return JSON.stringify(result, null, 2);
     };
 
-    const callActiveMcpTool = async (name: MrKwizMcpToolName, args: Record<string, unknown>) => {
-        const entry = activeToken();
-        await debug('Visible MrKwiz MCP proxy invoked.', { name, token_hash: entry.tokenHash });
-
+    const callMcpTool = async (entry: StoredToken, name: MrKwizMcpToolName, args: Record<string, unknown>) => {
         const response = await fetch(`${entry.baseUrl}/mcp`, {
             body: JSON.stringify({
                 id: `plugin-proxy-${name}-${Date.now()}`,
@@ -303,6 +372,12 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         }
 
         return formatMcpToolResult(body.result);
+    };
+
+    const callActiveMcpTool = async (name: MrKwizMcpToolName, args: Record<string, unknown>) => {
+        const entry = activeToken();
+        await debug('Visible MrKwiz MCP proxy invoked.', { name, token_hash: entry.tokenHash });
+        return callMcpTool(entry, name, args);
     };
 
     const registerCallbackOnce = async (entry: StoredToken) => {
@@ -461,6 +536,60 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         return { addResult: addResult.data, changed: true, connectResult: connectResult.data };
     };
 
+    const runDiagnostics = async (entry: StoredToken, request: BridgeRequest): Promise<DiagnosticReport> => {
+        const checks: DiagnosticCheck[] = [];
+        const addCheck = (check: DiagnosticCheck) => checks.push(check);
+
+        addCheck({
+            details: { action: request.action, base_url: entry.baseUrl, callback_url: tokenCallbackUrl(entry.tokenHash) },
+            message: 'Local token and callback URL are available.',
+            ok: true,
+        });
+
+        let activated = false;
+        try {
+            const activation = await activateMcp(entry);
+            activated = true;
+            addCheck({
+                details: { changed: activation.changed },
+                message: 'OpenCode MCP server activation succeeded.',
+                ok: true,
+            });
+        } catch (error) {
+            addCheck({
+                details: { error: error instanceof Error ? error.message : String(error) },
+                message: 'OpenCode MCP server activation failed.',
+                ok: false,
+            });
+        }
+
+        const mcpStatus = await getOpenCodeMcpStatus();
+        addCheck({
+            details: mcpStatus,
+            message: mcpStatus.name ? 'OpenCode reports a MrKwiz MCP server.' : 'OpenCode does not report a MrKwiz MCP server.',
+            ok: !!mcpStatus.name,
+        });
+
+        if (activated) {
+            try {
+                const context = await callMcpTool(entry, 'get_quiz_context', {});
+                addCheck({
+                    details: { context_preview: context.slice(0, 500) },
+                    message: 'Hosted MrKwiz MCP get_quiz_context succeeded.',
+                    ok: true,
+                });
+            } catch (error) {
+                addCheck({
+                    details: { error: error instanceof Error ? error.message : String(error) },
+                    message: 'Hosted MrKwiz MCP get_quiz_context failed.',
+                    ok: false,
+                });
+            }
+        }
+
+        return { checks, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
+    };
+
     const sendPrompt = async (prompt: string, payload: BridgePayload) => {
         const model = config.defaultModel ? { modelID: config.defaultModel.modelID, providerID: config.defaultModel.providerID } : undefined;
         const session = await client.session.create({
@@ -483,6 +612,65 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
         await debug('Created MrKwiz OpenCode session.', { session_id: session.data.id, title: titleForAction(payload) });
         return session.data;
+    };
+
+    const storePendingRequest = async (request: BridgeRequest, diagnosticReport: DiagnosticReport): Promise<PendingBridgeRequest> => {
+        const pending: PendingBridgeRequest = {
+            ...request,
+            createdAt: new Date().toISOString(),
+            diagnosticReport,
+        };
+        config.pendingRequest = pending;
+        await saveConfig();
+        return pending;
+    };
+
+    const clearPendingRequest = async () => {
+        if (!config.pendingRequest) return;
+        config.pendingRequest = null;
+        await saveConfig();
+    };
+
+    const handleBridgeRequest = async (request: BridgeRequest) => {
+        const entry = config.tokens.find((token) => token.tokenHash === request.tokenHash);
+        if (!entry) throw new Error(`Unknown MrKwiz MCP token hash: ${request.tokenHash}`);
+
+        scheduleCallbackRegistration(entry, request.action);
+        const diagnostics = await runDiagnostics(entry, request);
+
+        if (diagnostics.ok) {
+            const prompt = buildDesignPrompt(request, diagnostics);
+            const session = await sendPrompt(prompt, request.payload);
+            await clearPendingRequest();
+            return { diagnostics, pending_request: null, session };
+        }
+
+        const pending = await storePendingRequest(request, diagnostics);
+        const prompt = buildSetupPrompt(pending, diagnostics);
+        const session = await sendPrompt(prompt, request.payload);
+        return { diagnostics, pending_request: pending, session };
+    };
+
+    const doPendingRequest = async (args: { clear?: boolean }) => {
+        const pending = config.pendingRequest;
+        if (!pending) {
+            return { ok: false, note: 'No pending MrKwiz user request is stored.' };
+        }
+
+        if (args.clear) {
+            await clearPendingRequest();
+            return { ok: true, cleared: true };
+        }
+
+        const result = await handleBridgeRequest(pending);
+        return {
+            diagnostics: result.diagnostics,
+            ok: result.diagnostics.ok,
+            pending_request: result.pending_request
+                ? { action: result.pending_request.action, created_at: result.pending_request.createdAt, token_hash: result.pending_request.tokenHash }
+                : null,
+            session_id: result.session.id,
+        };
     };
 
     await debug('Plugin initializing.', {
@@ -541,18 +729,17 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         const action = actionByPath[suffix];
         if (!action) return addCors(request, json({ error: 'Unknown MrKwiz bridge action.' }, { status: 404 }));
 
-        scheduleCallbackRegistration(entry, action);
-        const activation = await activateMcp(entry);
         const payload = { ...((await request.json().catch(() => ({}))) as BridgePayload), action };
-        const prompt = buildPrompt(payload, tokenHash);
-        const session = await sendPrompt(prompt, payload);
+        const result = await handleBridgeRequest({ action, payload, tokenHash });
         await client.tui.showToast({
             body: {
-                message: activation.changed ? 'MrKwiz MCP activated and prompt sent to OpenCode.' : 'MrKwiz prompt sent to OpenCode.',
+                message: result.diagnostics.ok
+                    ? 'MrKwiz diagnostics passed and prompt sent to OpenCode.'
+                    : 'MrKwiz diagnostics failed; setup prompt sent to OpenCode.',
                 variant: 'success',
             },
         });
-        return addCors(request, json({ ok: true, active_token_hash: config.activeTokenHash, session_id: session.id }));
+        return addCors(request, json({ diagnostics: result.diagnostics, ok: true, active_token_hash: config.activeTokenHash, session_id: result.session.id }));
     };
 
     await debug('Starting bridge HTTP server.');
@@ -671,6 +858,15 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 description: 'Force re-register MrKwiz OpenCode callback URLs for saved MCP tokens. Use when the MrKwiz admin page has stale or missing OpenCode callback URLs.',
                 async execute(args) {
                     return JSON.stringify(await resetCallbackRegistrations(args), null, 2);
+                },
+            }),
+            mrkwiz_do_pending_request: tool({
+                args: {
+                    clear: tool.schema.boolean().optional().describe('If true, abandon the stored pending MrKwiz user request instead of retrying it.'),
+                },
+                description: 'Retry the stored pending MrKwiz admin UI request after setup diagnostics have been resolved, or clear it if stale.',
+                async execute(args) {
+                    return JSON.stringify(await doPendingRequest(args), null, 2);
                 },
             }),
             mrkwiz_get_quiz_context: tool({
