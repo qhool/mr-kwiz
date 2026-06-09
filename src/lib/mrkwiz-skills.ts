@@ -1,7 +1,6 @@
 import Mustache from 'mustache';
 
 import setupTemplate from '../../docs/mrkwiz-opencode-setup.SKILL.md.mustache?raw';
-import authorTemplate from '../../docs/mrkwiz-quiz-author.SKILL.md.mustache?raw';
 import designTemplate from '../../docs/mrkwiz-quiz-design.SKILL.md.mustache?raw';
 import editTemplate from '../../docs/mrkwiz-quiz-edit.SKILL.md.mustache?raw';
 
@@ -15,7 +14,6 @@ export const MRKWIZ_SKILL_NAMES = [
     'mrkwiz-opencode-setup',
     'mrkwiz-quiz-design',
     'mrkwiz-quiz-edit',
-    'mrkwiz-quiz-author',
 ] as const;
 
 export type MrKwizSkillName = (typeof MRKWIZ_SKILL_NAMES)[number];
@@ -24,7 +22,6 @@ const SKILL_TEMPLATES: Record<MrKwizSkillName, { sectionKeys: readonly SectionKe
     'mrkwiz-opencode-setup': { sectionKeys: ['mcp_tools'], template: setupTemplate },
     'mrkwiz-quiz-design': { sectionKeys: [], template: designTemplate },
     'mrkwiz-quiz-edit': { sectionKeys: ['mcp_tools', 'schema_reference'], template: editTemplate },
-    'mrkwiz-quiz-author': { sectionKeys: [], template: authorTemplate },
 };
 
 const isMrKwizSkillName = (value: string): value is MrKwizSkillName => {
@@ -60,10 +57,4 @@ export const renderMrKwizSkill = async (name: string): Promise<string | null> =>
     }
 
     return Mustache.render(template, context).trim();
-};
-
-export const renderMrKwizQuizAuthorSkill = async (): Promise<string> => {
-    const skill = await renderMrKwizSkill('mrkwiz-quiz-author');
-    if (!skill) throw new Error('Missing mrkwiz-quiz-author skill.');
-    return skill;
 };

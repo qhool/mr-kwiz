@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildAdminQuestionEditPrompt } from '../admin-question-edit-prompt';
 import { renderAdminSkillPrompt } from '../admin-skill-prompt';
 import { MRKWIZ_MCP_TOOLS } from '../mrkwiz-mcp-tools';
-import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../mrkwiz-quiz-author-skill';
+import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../mrkwiz-skills';
 import { buildRespondentResultsPrompt } from '../respondent-results-prompt';
 import { makeAnswers, testDefinition } from './fixtures';
 
@@ -89,6 +89,7 @@ describe('renderMrKwizSkill', () => {
         expect(skill).toContain('Plugin Installed But Tools Missing');
         expect(skill).toContain('Testing Checklist');
         expect(skill).toContain('mrkwiz_bridge_status');
+        expect(skill).toContain('mrkwiz_reset_callback_urls');
         expect(skill).toContain('mrkwiz_configure_mcp');
         expect(skill).toContain('mrkwiz_get_quiz_context');
         expect(skill).toContain('## mrkwiz.get_quiz_context');
@@ -121,13 +122,7 @@ describe('renderMrKwizSkill', () => {
         }
     });
 
-    it('renders the legacy author skill as a short router', async () => {
-        const skill = await renderMrKwizSkill('mrkwiz-quiz-author');
-
-        expect(skill).toContain('MrKwiz Quiz Author Router');
-        expect(skill).toContain('mrkwiz-opencode-setup');
-        expect(skill).toContain('mrkwiz-quiz-design');
-        expect(skill).toContain('mrkwiz-quiz-edit');
-        expect(skill).not.toContain('## QuizEditPatch');
+    it('does not render unknown skill names', async () => {
+        await expect(renderMrKwizSkill('not-a-real-skill')).resolves.toBeNull();
     });
 });

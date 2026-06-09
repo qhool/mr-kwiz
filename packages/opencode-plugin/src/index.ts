@@ -152,14 +152,13 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     let serverPort = 0;
     const callbackRegistrations = new Map<string, Promise<void>>();
     const registeredCallbackUrls = new Map<string, string>();
+    const debugStdout = process.env.MRKWIZ_PLUGIN_DEBUG_STDOUT === '1';
 
     const debug = async (message: string, extra?: Record<string, unknown>) => {
-        console.info(`[mrkwiz-opencode-plugin] ${message}`, extra ?? {});
+        if (debugStdout) console.info(`[mrkwiz-opencode-plugin] ${message}`, extra ?? {});
         await client.app
             .log({ body: { service: 'mrkwiz-opencode-plugin', level: 'info', message, extra } })
-            .catch((error) => {
-                console.error('[mrkwiz-opencode-plugin] failed to write OpenCode app log', error);
-            });
+            .catch(() => {});
     };
 
     const loadConfig = async (): Promise<MrKwizConfig> => {
@@ -237,7 +236,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     });
 
     const status = async () => {
-        await refreshCallbackRegistrations('status');
+        refreshCallbackRegistrations('status');
         const mcp = await getOpenCodeMcpStatus();
         return {
             active_token_hash: config.activeTokenHash,
@@ -376,8 +375,51 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         return task;
     };
 
-    const refreshCallbackRegistrations = async (reason: string) => {
-        await Promise.all(config.tokens.map((entry) => ensureCallbackRegistered(entry, reason)));
+    const scheduleCallbackRegistration = (entry: StoredToken, reason: string) => {
+        void ensureCallbackRegistered(entry, reason).catch((error) =>
+            debug('Failed to schedule callback registration.', {
+                error: error instanceof Error ? error.message : String(error),
+                reason,
+                token_hash: entry.tokenHash,
+            })
+        );
+    };
+
+    const refreshCallbackRegistrations = (reason: string) => {
+        for (const entry of config.tokens) {
+            scheduleCallbackRegistration(entry, reason);
+        }
+    };
+
+    const resetCallbackRegistrations = async (args: { token_hash?: string; wait?: boolean }) => {
+        const targetTokens = args.token_hash
+            ? config.tokens.filter((entry) => entry.tokenHash === args.token_hash)
+            : config.tokens;
+
+        if (args.token_hash && targetTokens.length === 0) {
+            throw new Error(`Unknown MrKwiz MCP token hash: ${args.token_hash}`);
+        }
+
+        for (const entry of targetTokens) {
+            registeredCallbackUrls.delete(entry.tokenHash);
+        }
+
+        if (args.wait) {
+            await Promise.all(targetTokens.map((entry) => ensureCallbackRegistered(entry, 'manual-reset')));
+        } else {
+            for (const entry of targetTokens) {
+                scheduleCallbackRegistration(entry, 'manual-reset');
+            }
+        }
+
+        return {
+            ok: true,
+            mode: args.wait ? 'completed' : 'scheduled',
+            tokens: targetTokens.map((entry) => ({
+                callback_url: tokenCallbackUrl(entry.tokenHash),
+                token_hash: entry.tokenHash,
+            })),
+        };
     };
 
     const upsertToken = async (input: { baseUrl?: string; label?: string; token: string }) => {
@@ -393,7 +435,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         };
         config.tokens = [next, ...config.tokens.filter((entry) => entry.tokenHash !== tokenHash)];
         await saveConfig();
-        await registerCallback(next);
+        scheduleCallbackRegistration(next, 'configure-token');
         return next;
     };
 
@@ -485,7 +527,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         if (!entry) return addCors(request, json({ error: 'Unknown MrKwiz MCP token hash.' }, { status: 404 }));
 
         if (request.method === 'GET' && suffix === 'status') {
-            await ensureCallbackRegistered(entry, 'token-status');
+            scheduleCallbackRegistration(entry, 'token-status');
             return addCors(request, json(publicTokenStatus(entry, await getOpenCodeMcpStatus())));
         }
         if (request.method !== 'POST') return addCors(request, json({ error: 'Method not allowed.' }, { status: 405 }));
@@ -499,7 +541,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         const action = actionByPath[suffix];
         if (!action) return addCors(request, json({ error: 'Unknown MrKwiz bridge action.' }, { status: 404 }));
 
-        await ensureCallbackRegistered(entry, action);
+        scheduleCallbackRegistration(entry, action);
         const activation = await activateMcp(entry);
         const payload = { ...((await request.json().catch(() => ({}))) as BridgePayload), action };
         const prompt = buildPrompt(payload, tokenHash);
@@ -576,7 +618,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         running: true,
         token_count: config.tokens.length,
     });
-    await refreshCallbackRegistrations('startup');
+    refreshCallbackRegistrations('startup');
 
     const configureToken = async (args: { base_url?: string; label?: string; token: string }) => {
         await debug('mrkwiz_configure_mcp invoked.', { base_url: args.base_url, token_length: args.token?.length ?? 0 });
@@ -586,7 +628,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             active_token_hash: config.activeTokenHash,
             callback_url: tokenCallbackUrl(entry.tokenHash),
             config_file: configFile,
-            note: 'Token saved locally and callback registered. MrKwiz MCP will activate when a MrKwiz bridge action selects this token.',
+            note: 'Token saved locally. Callback registration is running in the background; MrKwiz MCP will activate when a MrKwiz bridge action selects this token.',
             token_hash: entry.tokenHash,
         };
     };
@@ -619,6 +661,16 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     const currentStatus = await status();
                     await debug('mrkwiz_bridge_status invoked.', currentStatus);
                     return JSON.stringify(currentStatus, null, 2);
+                },
+            }),
+            mrkwiz_reset_callback_urls: tool({
+                args: {
+                    token_hash: tool.schema.string().optional().describe('Optional token hash to reset. If omitted, all saved MrKwiz token callbacks are re-registered.'),
+                    wait: tool.schema.boolean().optional().describe('If true, wait for registration attempts to finish. Defaults to false and runs in the background.'),
+                },
+                description: 'Force re-register MrKwiz OpenCode callback URLs for saved MCP tokens. Use when the MrKwiz admin page has stale or missing OpenCode callback URLs.',
+                async execute(args) {
+                    return JSON.stringify(await resetCallbackRegistrations(args), null, 2);
                 },
             }),
             mrkwiz_get_quiz_context: tool({

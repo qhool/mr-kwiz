@@ -67,9 +67,11 @@ Recommended config shape:
 If `mrkwiz_bridge_status` shows a token as connected but not active:
 
 1. Tell the user to refresh the MrKwiz admin AI page.
-2. Tell the user to click `Open in OpenCode` or a focused edit action for that token.
-3. The plugin callback will activate the token and send a new prompt.
-4. In the new prompt, load `mrkwiz-quiz-edit` for saved quiz changes.
+2. If the admin page still shows no OpenCode buttons or a stale callback, call `mrkwiz_reset_callback_urls`.
+3. Tell the user to refresh the MrKwiz admin AI page again.
+4. Tell the user to click `Open in OpenCode` or a focused edit action for that token.
+5. The plugin callback will activate the token and send a new prompt.
+6. In the new prompt, load `mrkwiz-quiz-edit` for saved quiz changes.
 
 Do not call `mrkwiz_configure_mcp` again unless the user is adding or replacing a token.
 
@@ -100,6 +102,7 @@ Use this checklist after setup changes:
 Visible plugin setup/status tools:
 
 - `mrkwiz_bridge_status`: inspect bridge, tokens, callbacks, default model, active token, and MCP status.
+- `mrkwiz_reset_callback_urls`: force re-register callback URLs for saved tokens when the MrKwiz admin page has stale or missing OpenCode callbacks.
 - `mrkwiz_configure_default_model`: save the default OpenCode model for MrKwiz-created sessions.
 - `mrkwiz_configure_mcp`: save a raw MCP token locally and register its callback URL.
 

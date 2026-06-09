@@ -1,4 +1,4 @@
-import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../../src/lib/mrkwiz-quiz-author-skill';
+import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../../src/lib/mrkwiz-skills';
 
 const skillCatalog = () => ({
     skills: MRKWIZ_SKILL_NAMES.map((name) => ({
