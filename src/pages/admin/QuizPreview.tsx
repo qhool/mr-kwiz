@@ -7,6 +7,8 @@ import {
     QuizResultsScreen,
 } from '../../components/quiz-preview';
 import { AdminPreviewQuestionsPanel } from '../../components/admin-preview-questions-panel';
+import { useAdminEditMode } from '../../hooks/useAdminEditMode';
+import { type AdminBridgeAction, useAdminOpenCodeBridge } from '../../hooks/useAdminOpenCodeBridge';
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
 import { buildAdminQuestionEditPrompt } from '../../lib/admin-question-edit-prompt';
 import { quizDefinitionSchema, quizEditPatchSchema, type Question, type QuizDefinition } from '../../lib/quiz-definition';
@@ -75,6 +77,13 @@ const QuizPreviewPage: React.FC = () => {
         setError,
         setMetadata,
     } = useAdminQuizDefinition(adminKey);
+    const { editMode } = useAdminEditMode(adminKey);
+    const {
+        activeBridgeToken,
+        bridgeError,
+        bridgeMessage,
+        sendBridgeAction,
+    } = useAdminOpenCodeBridge(adminKey, metadata);
 
     const [selectedScreen, setSelectedScreen] = React.useState<PreviewScreen>({ type: 'intro' });
     const [previewScores, setPreviewScores] = React.useState<Record<string, number>>({});
@@ -159,6 +168,12 @@ const QuizPreviewPage: React.FC = () => {
     const handleCopyQuestionEditPrompt = async (question: Question) => {
         setError(null);
         setMessage(null);
+
+        if (editMode === 'opencode') {
+            await sendBridgeAction(activeBridgeToken, 'edit-question', { question_id: question.id });
+            return;
+        }
+
         setIsPatchBoxOpen(true);
 
         if (!navigator.clipboard?.writeText) {
@@ -223,6 +238,30 @@ const QuizPreviewPage: React.FC = () => {
         }
     };
 
+    const renderOpenCodeActionButton = (label: string, action: AdminBridgeAction, payload: Record<string, unknown> = {}) => {
+        if (editMode !== 'opencode') return null;
+
+        return (
+            <button
+                disabled={!activeBridgeToken || !metadata}
+                onClick={() => {
+                    void sendBridgeAction(activeBridgeToken, action, payload);
+                }}
+                style={{
+                    background: colors.accent,
+                    border: 'none',
+                    borderRadius: 999,
+                    color: colors.accent_text,
+                    cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                    padding: '0.62rem 1rem',
+                }}
+                type="button"
+            >
+                {label}
+            </button>
+        );
+    };
+
     return (
         <AdminShell adminKey={adminKey} currentPage="preview" metadata={metadata} themeColors={definition?.display_config.theme_colors}>
             <header style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.9rem', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
@@ -234,26 +273,28 @@ const QuizPreviewPage: React.FC = () => {
                             : 'Loading quiz definition...'}
                     </p>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
-                    <button
-                        onClick={() => {
-                            setError(null);
-                            setMessage(null);
-                            setIsPatchBoxOpen((current) => !current);
-                        }}
-                        style={{
-                            background: isPatchBoxOpen ? colors.body_text : colors.accent,
-                            border: 'none',
-                            borderRadius: 999,
-                            color: colors.accent_text,
-                            cursor: 'pointer',
-                            padding: '0.7rem 1.15rem',
-                        }}
-                        type="button"
-                    >
-                        {isPatchBoxOpen ? 'Close Patch Box' : 'Paste Patch'}
-                    </button>
-                </div>
+                {editMode === 'paste-back' ? (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem' }}>
+                        <button
+                            onClick={() => {
+                                setError(null);
+                                setMessage(null);
+                                setIsPatchBoxOpen((current) => !current);
+                            }}
+                            style={{
+                                background: isPatchBoxOpen ? colors.body_text : colors.accent,
+                                border: 'none',
+                                borderRadius: 999,
+                                color: colors.accent_text,
+                                cursor: 'pointer',
+                                padding: '0.7rem 1.15rem',
+                            }}
+                            type="button"
+                        >
+                            {isPatchBoxOpen ? 'Close Patch Box' : 'Paste Patch'}
+                        </button>
+                    </div>
+                ) : null}
             </header>
 
             {error ? (
@@ -271,6 +312,21 @@ const QuizPreviewPage: React.FC = () => {
                 </div>
             ) : null}
 
+            {bridgeError ? (
+                <div
+                    style={{
+                        background: ui.danger_background,
+                        border: `1px solid ${ui.danger_border}`,
+                        color: ui.danger_text,
+                        marginBottom: '1rem',
+                        padding: '0.75rem 1rem',
+                        whiteSpace: 'pre-wrap',
+                    }}
+                >
+                    {bridgeError}
+                </div>
+            ) : null}
+
             {message ? (
                 <div
                     style={{
@@ -285,7 +341,21 @@ const QuizPreviewPage: React.FC = () => {
                 </div>
             ) : null}
 
-            {isPatchBoxOpen ? (
+            {bridgeMessage ? (
+                <div
+                    style={{
+                        background: ui.success_background,
+                        border: `1px solid ${ui.success_border}`,
+                        color: ui.success_text,
+                        marginBottom: '1rem',
+                        padding: '0.75rem 1rem',
+                    }}
+                >
+                    {bridgeMessage}
+                </div>
+            ) : null}
+
+            {editMode === 'paste-back' && isPatchBoxOpen ? (
                 <section
                     style={{
                         background: colors.panel_background,
@@ -405,6 +475,37 @@ const QuizPreviewPage: React.FC = () => {
                                 Results
                             </button>
                         </div>
+                        {editMode === 'opencode' ? (
+                            <div style={{ borderTop: `1px solid ${colors.panel_border}`, marginTop: '0.9rem', paddingTop: '0.9rem' }}>
+                                <button
+                                    disabled={!activeBridgeToken || !metadata}
+                                    onClick={() => {
+                                        void sendBridgeAction(activeBridgeToken, 'open-quiz');
+                                    }}
+                                    style={{
+                                        background: colors.accent,
+                                        border: 'none',
+                                        borderRadius: 999,
+                                        color: colors.accent_text,
+                                        cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                                        padding: '0.65rem 1rem',
+                                        width: '100%',
+                                    }}
+                                    type="button"
+                                >
+                                    Open in OpenCode
+                                </button>
+                                {!activeBridgeToken ? (
+                                    <p style={{ color: colors.muted_text, fontSize: '0.86rem', margin: '0.6rem 0 0' }}>
+                                        Configure an OpenCode token from the Edit tab.
+                                    </p>
+                                ) : null}
+                            </div>
+                        ) : (
+                            <p style={{ color: colors.muted_text, fontSize: '0.86rem', margin: '0.9rem 0 0' }}>
+                                Paste-back mode is active. Change modes from the Edit tab.
+                            </p>
+                        )}
                     </div>
 
                     <div
@@ -481,16 +582,23 @@ const QuizPreviewPage: React.FC = () => {
                         </div>
                     ) : null}
 
-                    {!isLoading && definition && selectedScreen.type === 'intro' ? <QuizIntroScreen definition={definition} themeColors={definition.display_config.theme_colors} /> : null}
+                    {!isLoading && definition && selectedScreen.type === 'intro' ? (
+                        <QuizIntroScreen
+                            action={renderOpenCodeActionButton('Edit quiz intro', 'edit-intro')}
+                            definition={definition}
+                        />
+                    ) : null}
                     {!isLoading && definition && selectedScreen.type === 'questions' ? (
                         <AdminPreviewQuestionsPanel
                             definition={definition}
-                            onCopyQuestionEditPrompt={handleCopyQuestionEditPrompt}
+                            editQuestionLabel={editMode === 'opencode' ? 'Edit This Question in OpenCode' : 'Edit This Question in Chat'}
+                            onEditQuestion={handleCopyQuestionEditPrompt}
                         />
                     ) : null}
                     {!isLoading && definition && selectedScreen.type === 'results' ? (
                         <QuizResultsScreen
                             archetypeNameTemplate={definition.display_config.archetype_name_template}
+                            bottomAction={renderOpenCodeActionButton('Edit archetypes', 'edit-archetypes')}
                             completionMarkdown={definition.display_config.completion_markdown}
                             scaleMax={scaleMax}
                             scaleMin={scaleMin}
@@ -500,6 +608,7 @@ const QuizPreviewPage: React.FC = () => {
                             traitStats={previewTraitStats}
                             traits={definition.traits}
                             themeColors={definition.display_config.theme_colors}
+                            topAction={renderOpenCodeActionButton('Edit scoring', 'edit-scoring')}
                         />
                     ) : null}
                 </main>

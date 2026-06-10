@@ -1,0 +1,81 @@
+---
+name: mrkwiz-quiz-edit
+description: Use when applying saved MrKwiz quiz edits with MCP/plugin tools: fetch context, build QuizEditPatch, validate, and apply after confirmation.
+---
+
+# MrKwiz Quiz Edit
+
+Use this skill only to make saved changes to a MrKwiz quiz. Assume OpenCode setup is already correct, diagnostics already passed, and a MrKwiz token is active.
+
+Your job is operational: fetch context, make the smallest correct `QuizEditPatch`, validate it, then apply it only when appropriate.
+
+## Tool Choice
+
+Use visible plugin proxy tools by default because they appear in OpenCode's normal tool list:
+
+- `mrkwiz_get_quiz_context`
+- `mrkwiz_get_question_context`
+- `mrkwiz_get_edit_capabilities`
+- `mrkwiz_validate_edit`
+- `mrkwiz_apply_edit`
+
+If dynamic `mrkwiz.*` MCP tools are visible, they are equivalent:
+
+- `mrkwiz.get_quiz_context`
+- `mrkwiz.get_question_context`
+- `mrkwiz.get_edit_capabilities`
+- `mrkwiz.validate_edit`
+- `mrkwiz.apply_edit`
+
+Do not use `mrkwiz_configure_mcp`, `mrkwiz_configure_default_model`, or bridge setup helpers for editing. Those are setup tools only.
+
+## Required Workflow
+
+For every saved edit:
+
+1. Call `mrkwiz_get_quiz_context` first.
+2. If replacing or deleting a question, call `mrkwiz_get_question_context` for that question and preserve `old_question_hash`.
+3. Draft the smallest correct `QuizEditPatch`.
+4. Call `mrkwiz_validate_edit` with the patch.
+5. If validation fails, fix the patch and validate again.
+6. If validation succeeds and the user clearly requested direct application, call `mrkwiz_apply_edit`.
+7. If validation succeeds but direct application was not requested, ask for confirmation before calling `mrkwiz_apply_edit`.
+
+Never apply a patch that has not validated successfully.
+
+## Editing Rules
+
+- Prefer surgical operations over full-object replacement.
+- Use `merge_at_path`, `replace_at_path`, or `remove_at_path` for `display_config` and `scoring_config` when appropriate.
+- Use explicit question operations for questions.
+- Use explicit archetype operations for archetypes.
+- Keep IDs stable unless the user asks to change them.
+- Do not expose a large JSON patch unless the user needs to inspect it.
+- Keep question responses plausible, nonjudgmental, and concrete.
+- Avoid medical, legal, diagnostic, moralizing, or protected-class judgments unless the user explicitly provided a safe framing.
+
+## Locked Trait Structure
+
+Once questions exist, do not add, remove, rename, or reorder traits. Use `update_trait_text` for wording-only trait edits.
+
+Trait order defines matrix column order. Response order defines matrix row order. Matrix values use row-major indexing: `values[response_index * trait_count + trait_index]`.
+
+## Error Handling
+
+If the active token is missing, expired, revoked, or connected to the wrong quiz, stop editing and load `mrkwiz-opencode-setup`.
+
+If `base_definition_version` conflicts, fetch context again and rebuild the patch against the current version.
+
+If a question hash conflict occurs, fetch that question again and ask the user how to reconcile the changed question.
+
+## Fallback
+
+If MCP/plugin tools are unavailable but the user still wants a patch, use paste-back mode: produce exactly one valid `QuizEditPatch` JSON object and tell the user to paste it into the MrKwiz patch box. Do not pretend the patch was saved.
+
+## MCP Tool Reference
+
+{{{mcp_tools_sha256_a7b5031f0b6ce0ed084824ed72adfbdfa3beba09fe4336e35847767d3ba4f665}}}
+
+## QuizEditPatch Schema Reference
+
+{{{schema_reference_sha256_b46c2b27b96e0db22ec45b0ab5ce778f845e289278ab064e122435ffde23627f}}}

@@ -1,0 +1,38 @@
+{
+  "name": "@mrkwiz/opencode-plugin",
+  "version": "0.1.0",
+  "description": "OpenCode bridge plugin for MrKwiz quiz authoring.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qhool/mr-kwiz.git",
+    "directory": "packages/opencode-plugin"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@opencode-ai/plugin": "latest"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "typescript": "^5.8.3"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "opencode",
+    "mrkwiz",
+    "mcp"
+  ],
+  "license": "MIT"
+}

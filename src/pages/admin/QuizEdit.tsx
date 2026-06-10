@@ -2,6 +2,7 @@ import React from 'react';
 import { useParams } from 'react-router-dom';
 
 import { AdminShell } from '../../components/admin-shell';
+import { useAdminEditMode } from '../../hooks/useAdminEditMode';
 import {
     themeColorsSchema,
     quizDefinitionSchema,
@@ -11,8 +12,14 @@ import {
     type QuizEditPatch,
 } from '../../lib/quiz-definition';
 import { renderAdminSkillPrompt } from '../../lib/admin-skill-prompt';
+import { getQuizMcpTokenStatus } from '../../lib/admin-mcp-tokens';
 import { deriveThemeUiColors, resolveThemeColors } from '../../lib/theme-colors';
 import { useAdminQuizDefinition } from '../../hooks/useAdminQuizDefinition';
+import {
+    formatMcpTokenDate,
+    getTokenBridgeState,
+    useAdminOpenCodeBridge,
+} from '../../hooks/useAdminOpenCodeBridge';
 
 type AdminQuizResponse = {
     quiz: {
@@ -252,10 +259,25 @@ const extractJsonCandidate = (rawText: string): string => {
 const QuizEditPage: React.FC = () => {
     const { adminKey } = useParams<{ adminKey: string }>();
     const { definition, error, isLoading, metadata, setDefinition, setError, setMetadata } = useAdminQuizDefinition(adminKey);
+    const { editMode, setEditMode } = useAdminEditMode(adminKey);
+    const {
+        activeBridgeToken,
+        bridgeError,
+        bridgeMessage,
+        bridgeStatuses,
+        busyTokenId,
+        createBootstrapToken,
+        isCreatingToken,
+        isLoadingTokens,
+        revokeToken,
+        sendBridgeAction,
+        tokens,
+    } = useAdminOpenCodeBridge(adminKey, metadata);
     const [patchText, setPatchText] = React.useState('');
     const [copiedSkillBaselineVersion, setCopiedSkillBaselineVersion] = React.useState<number | null>(null);
     const [message, setMessage] = React.useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [isApplyingTheme, setIsApplyingTheme] = React.useState(false);
     const [selectedThemePresetId, setSelectedThemePresetId] = React.useState('none');
     const colors = React.useMemo(() => resolveThemeColors(definition?.display_config.theme_colors), [definition?.display_config.theme_colors]);
     const ui = React.useMemo(() => deriveThemeUiColors(colors), [colors]);
@@ -356,8 +378,8 @@ const QuizEditPage: React.FC = () => {
         return themePresets.find((preset) => preset.id === selectedThemePresetId) ?? null;
     }, [selectedThemePresetId]);
 
-    const handleApplyThemePreset = () => {
-        if (!metadata || !definition) {
+    const handleApplyThemePreset = async () => {
+        if (!adminKey || !metadata || !definition) {
             setError('Quiz definition is not loaded yet.');
             return;
         }
@@ -369,24 +391,49 @@ const QuizEditPage: React.FC = () => {
 
         const patch: QuizEditPatch = {
             base_definition_version: metadata.current_definition_version,
-            operations: [
-                {
-                    op: 'replace_display_config',
-                    display_config: {
-                        ...definition.display_config,
-                        ...(nextThemeColors ? { theme_colors: nextThemeColors } : {}),
-                    },
-                },
-            ],
+            operations: nextThemeColors
+                ? [
+                      {
+                          op: 'replace_at_path',
+                          path: '/display_config/theme_colors',
+                          value: nextThemeColors,
+                      },
+                  ]
+                : [
+                      {
+                          op: 'remove_at_path',
+                          path: '/display_config/theme_colors',
+                      },
+                  ],
         };
 
-        if (!nextThemeColors) {
-            delete (patch.operations[0] as { display_config: { theme_colors?: ThemeColors } }).display_config.theme_colors;
-        }
+        try {
+            setIsApplyingTheme(true);
+            setError(null);
+            setMessage(null);
 
-        setPatchText(JSON.stringify(patch, null, 2));
-        setMessage('Theme patch scaffold inserted into the Paste-Back box. Review and click Apply Patch to save.');
-        setError(null);
+            const response = await fetch(`/api/admin/${encodeURIComponent(adminKey)}/edit`, {
+                body: JSON.stringify(patch),
+                headers: {
+                    'content-type': 'application/json',
+                },
+                method: 'POST',
+            });
+
+            const body = (await response.json()) as Partial<AdminQuizResponse> & { error?: string };
+            if (!response.ok) {
+                throw new Error(body.error ?? 'Failed to apply theme.');
+            }
+
+            const parsedDefinition = quizDefinitionSchema.parse(body.definition);
+            setDefinition(parsedDefinition);
+            setMetadata(body.quiz as AdminQuizResponse['quiz']);
+            setMessage(nextThemeColors ? 'Theme applied.' : 'Theme colors cleared.');
+        } catch (submitError) {
+            setError(formatError(submitError));
+        } finally {
+            setIsApplyingTheme(false);
+        }
     };
 
     return (
@@ -408,26 +455,151 @@ const QuizEditPage: React.FC = () => {
                             : null}
                     </p>
                 ) : null}
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
-                    <button
-                        disabled={isLoading || !definition || !metadata}
-                        onClick={() => {
-                            void handleCopySkillPrompt();
-                        }}
+                <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', marginTop: '1rem' }}>
+                    <label
                         style={{
-                            background: colors.accent,
-                            border: 'none',
-                            borderRadius: 999,
-                            color: colors.accent_text,
-                            cursor: 'pointer',
-                            padding: '0.75rem 1.25rem',
+                            color: colors.body_text,
+                            display: 'grid',
+                            fontSize: '0.9rem',
+                            fontWeight: 700,
+                            gap: '0.35rem',
                         }}
-                        type="button"
                     >
-                        Copy LLM Skill Prompt
-                    </button>
+                        Edit mode
+                        <select
+                            onChange={(event) => setEditMode(event.target.value === 'paste-back' ? 'paste-back' : 'opencode')}
+                            style={{
+                                background: colors.panel_background,
+                                border: `1px solid ${colors.panel_border}`,
+                                borderRadius: 999,
+                                color: colors.body_text,
+                                fontSize: '0.95rem',
+                                padding: '0.6rem 0.85rem',
+                            }}
+                            value={editMode}
+                        >
+                            <option value="opencode">OpenCode</option>
+                            <option value="paste-back">Paste-back</option>
+                        </select>
+                    </label>
+                    <span style={{ color: colors.muted_text, fontSize: '0.9rem' }}>
+                        Preview follows this mode. Return here to change it.
+                    </span>
                 </div>
             </header>
+
+            {editMode === 'opencode' ? (
+                <section
+                    style={{
+                        background: colors.panel_background,
+                        border: `1px solid ${colors.panel_border}`,
+                        borderRadius: 18,
+                        marginBottom: '1rem',
+                        padding: '1rem',
+                    }}
+                >
+                    <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', justifyContent: 'space-between', marginBottom: '0.85rem' }}>
+                        <div>
+                            <h2 style={{ margin: 0 }}>OpenCode Editing</h2>
+                            <p style={{ color: colors.muted_text, margin: '0.35rem 0 0' }}>
+                                Use the local OpenCode bridge and hosted MCP tools for saved edits.
+                            </p>
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+                            <button
+                                disabled={!activeBridgeToken || !metadata}
+                                onClick={() => {
+                                    void sendBridgeAction(activeBridgeToken, 'open-quiz');
+                                }}
+                                style={{
+                                    background: colors.accent,
+                                    border: 'none',
+                                    borderRadius: 999,
+                                    color: colors.accent_text,
+                                    cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                                    padding: '0.65rem 1rem',
+                                }}
+                                type="button"
+                            >
+                                Open in OpenCode
+                            </button>
+                            <button
+                                disabled={isCreatingToken || isLoading || !metadata}
+                                onClick={() => {
+                                    void createBootstrapToken();
+                                }}
+                                style={{
+                                    background: colors.page_background,
+                                    border: `1px solid ${colors.panel_border}`,
+                                    borderRadius: 999,
+                                    color: colors.body_text,
+                                    cursor: isCreatingToken || isLoading || !metadata ? 'not-allowed' : 'pointer',
+                                    padding: '0.65rem 1rem',
+                                }}
+                                type="button"
+                            >
+                                {isCreatingToken ? 'Creating...' : 'Create Token and Copy Bootstrap Prompt'}
+                            </button>
+                        </div>
+                    </div>
+
+                    {isLoadingTokens ? <p>Loading tokens...</p> : null}
+                    {!isLoadingTokens && tokens.length === 0 ? (
+                        <p style={{ color: colors.muted_text }}>No MCP tokens have been created yet.</p>
+                    ) : null}
+                    <div style={{ display: 'grid', gap: '0.75rem' }}>
+                        {tokens.map((token) => {
+                            const status = getQuizMcpTokenStatus(token);
+                            const bridgeState = getTokenBridgeState(token, bridgeStatuses[token.id]);
+                            const bridgeLabel = bridgeState === 'active' ? 'active' : bridgeState === 'connected' ? 'connected' : bridgeState === 'valid' ? 'valid' : status;
+                            return (
+                                <article key={token.id} style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 14, padding: '0.9rem' }}>
+                                    <div style={{ alignItems: 'center', display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
+                                        <strong>{token.label || 'OpenCode token'}</strong>
+                                        <span style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 999, padding: '0.25rem 0.6rem' }}>{bridgeLabel}</span>
+                                    </div>
+                                    <p style={{ color: colors.muted_text, margin: '0.5rem 0' }}>Expires: {formatMcpTokenDate(token.expires_at)} · Last used: {formatMcpTokenDate(token.last_used_at)}</p>
+                                    <p style={{ color: colors.muted_text, margin: '0.5rem 0' }}>Token hash: <code>{token.token_hash.slice(0, 12)}...</code></p>
+                                    <p style={{ color: colors.muted_text, margin: '0.5rem 0' }}>Callback: {token.callback_url ?? 'Not registered'}</p>
+                                    {token.callback_url && status === 'active' ? (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.65rem' }}>
+                                            <button
+                                                onClick={() => { void sendBridgeAction(token, 'open-quiz'); }}
+                                                style={{ background: colors.accent, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: 'pointer', padding: '0.45rem 0.8rem' }}
+                                                type="button"
+                                            >
+                                                {bridgeState === 'active' ? 'Open in OpenCode' : 'Open in OpenCode (make active)'}
+                                            </button>
+                                            <button
+                                                onClick={() => { void sendBridgeAction(token, 'edit-theme'); }}
+                                                style={{ background: 'transparent', border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.accent, cursor: 'pointer', padding: '0.45rem 0.8rem' }}
+                                                type="button"
+                                            >
+                                                Edit Theme
+                                            </button>
+                                            <button
+                                                onClick={() => { void sendBridgeAction(token, 'edit-archetypes'); }}
+                                                style={{ background: 'transparent', border: `1px solid ${colors.panel_border}`, borderRadius: 999, color: colors.accent, cursor: 'pointer', padding: '0.45rem 0.8rem' }}
+                                                type="button"
+                                            >
+                                                Edit Archetypes
+                                            </button>
+                                        </div>
+                                    ) : null}
+                                    <button
+                                        disabled={busyTokenId === token.id || !!token.revoked_at}
+                                        onClick={() => { void revokeToken(token); }}
+                                        style={{ background: 'transparent', border: `1px solid ${ui.danger_border}`, borderRadius: 999, color: ui.danger_text, cursor: busyTokenId === token.id || token.revoked_at ? 'not-allowed' : 'pointer', padding: '0.45rem 0.8rem' }}
+                                        type="button"
+                                    >
+                                        {busyTokenId === token.id ? 'Revoking...' : 'Revoke'}
+                                    </button>
+                                </article>
+                            );
+                        })}
+                    </div>
+                </section>
+            ) : null}
 
             <section
                 style={{
@@ -440,7 +612,7 @@ const QuizEditPage: React.FC = () => {
             >
                 <h2 style={{ fontSize: '1.05rem', margin: '0 0 0.4rem' }}>Theme Presets</h2>
                 <p style={{ color: colors.muted_text, margin: '0 0 0.75rem' }}>
-                    Select a preset to generate a replace_display_config patch containing concrete theme colors. Custom themes can still be authored via LLM prompt/JSON edits.
+                    Select a preset to apply only <code>display_config.theme_colors</code>. Other display settings are left unchanged.
                 </p>
                 <div style={{ alignItems: 'center', display: 'flex', flexWrap: 'wrap', gap: '0.65rem' }}>
                     <select
@@ -464,19 +636,22 @@ const QuizEditPage: React.FC = () => {
                         ))}
                     </select>
                     <button
-                        onClick={handleApplyThemePreset}
+                        disabled={isApplyingTheme || isLoading || !definition || !metadata}
+                        onClick={() => {
+                            void handleApplyThemePreset();
+                        }}
                         style={{
                             background: colors.accent,
                             border: 'none',
                             borderRadius: 999,
                             color: colors.accent_text,
-                            cursor: 'pointer',
+                            cursor: isApplyingTheme || isLoading || !definition || !metadata ? 'not-allowed' : 'pointer',
                             fontWeight: 600,
                             padding: '0.55rem 1rem',
                         }}
                         type="button"
                     >
-                        Insert Theme Patch
+                        {isApplyingTheme ? 'Applying...' : 'Apply Theme'}
                     </button>
                 </div>
                 {activePreset ? (
@@ -537,6 +712,21 @@ const QuizEditPage: React.FC = () => {
                 </div>
             ) : null}
 
+            {bridgeError ? (
+                <div
+                    style={{
+                        background: ui.danger_background,
+                        border: `1px solid ${ui.danger_border}`,
+                        color: ui.danger_text,
+                        marginBottom: '1rem',
+                        padding: '0.75rem 1rem',
+                        whiteSpace: 'pre-wrap',
+                    }}
+                >
+                    {bridgeError}
+                </div>
+            ) : null}
+
             {message ? (
                 <div
                     style={{
@@ -551,11 +741,25 @@ const QuizEditPage: React.FC = () => {
                 </div>
             ) : null}
 
+            {bridgeMessage ? (
+                <div
+                    style={{
+                        background: ui.success_background,
+                        border: `1px solid ${ui.success_border}`,
+                        color: ui.success_text,
+                        marginBottom: '1rem',
+                        padding: '0.75rem 1rem',
+                    }}
+                >
+                    {bridgeMessage}
+                </div>
+            ) : null}
+
             <div
                 style={{
                     display: 'grid',
                     gap: '1.5rem',
-                    gridTemplateColumns: 'minmax(0, 1.2fr) minmax(320px, 0.8fr)',
+                    gridTemplateColumns: editMode === 'paste-back' ? 'minmax(0, 1.2fr) minmax(320px, 0.8fr)' : 'minmax(0, 1fr)',
                 }}
             >
                 <section>
@@ -578,8 +782,27 @@ const QuizEditPage: React.FC = () => {
                     </div>
                 </section>
 
+                {editMode === 'paste-back' ? (
                 <section>
                     <h2>Paste-Back Patch</h2>
+                    <button
+                        disabled={isLoading || !definition || !metadata}
+                        onClick={() => {
+                            void handleCopySkillPrompt();
+                        }}
+                        style={{
+                            background: colors.accent,
+                            border: 'none',
+                            borderRadius: 999,
+                            color: colors.accent_text,
+                            cursor: isLoading || !definition || !metadata ? 'not-allowed' : 'pointer',
+                            marginBottom: '1rem',
+                            padding: '0.75rem 1.25rem',
+                        }}
+                        type="button"
+                    >
+                        Copy LLM Skill Prompt
+                    </button>
                     <form onSubmit={handleSubmit}>
                         {copiedSkillBaselineVersion !== null ? (
                             <p style={{ color: colors.muted_text, marginTop: 0 }}>
@@ -634,6 +857,7 @@ const QuizEditPage: React.FC = () => {
                         </button>
                     </form>
                 </section>
+                ) : null}
             </div>
         </AdminShell>
     );

@@ -125,6 +125,62 @@ export type Database = {
           },
         ]
       }
+      quiz_mcp_tokens: {
+        Row: {
+          callback_origin: string | null
+          callback_url: string | null
+          created_at: string
+          deleted_at: string | null
+          expires_at: string | null
+          id: string
+          label: string
+          last_used_at: string | null
+          notes: string
+          quiz_id: string
+          revoked_at: string | null
+          token_digest: string
+          updated_at: string
+        }
+        Insert: {
+          callback_origin?: string | null
+          callback_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          notes?: string
+          quiz_id: string
+          revoked_at?: string | null
+          token_digest: string
+          updated_at?: string
+        }
+        Update: {
+          callback_origin?: string | null
+          callback_url?: string | null
+          created_at?: string
+          deleted_at?: string | null
+          expires_at?: string | null
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          notes?: string
+          quiz_id?: string
+          revoked_at?: string | null
+          token_digest?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quiz_mcp_tokens_quiz_id_fkey"
+            columns: ["quiz_id"]
+            isOneToOne: false
+            referencedRelation: "quizzes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       quiz_response_answers: {
         Row: {
           answer_id: string | null
@@ -471,4 +527,3 @@ export const Constants = {
     },
   },
 } as const
-

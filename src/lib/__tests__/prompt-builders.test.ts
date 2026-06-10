@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { buildAdminQuestionEditPrompt } from '../admin-question-edit-prompt';
 import { renderAdminSkillPrompt } from '../admin-skill-prompt';
+import { MRKWIZ_MCP_TOOLS } from '../mrkwiz-mcp-tools';
+import { MRKWIZ_SKILL_NAMES, renderMrKwizSkill } from '../mrkwiz-skills';
 import { buildRespondentResultsPrompt } from '../respondent-results-prompt';
 import { makeAnswers, testDefinition } from './fixtures';
 
@@ -70,5 +72,60 @@ describe('renderAdminSkillPrompt', () => {
         expect(prompt).toContain('## Question Index');
         expect(prompt).toContain('| position | question_id | prompt_summary | responses |');
         expect(prompt).toContain('| 1        | q01         | Prompt q01     | 3         |');
+    });
+});
+
+describe('renderMrKwizSkill', () => {
+    it('renders each hosted skill', async () => {
+        for (const skillName of MRKWIZ_SKILL_NAMES) {
+            await expect(renderMrKwizSkill(skillName)).resolves.toContain(`#`);
+        }
+    });
+
+    it('renders setup guidance with troubleshooting and plugin tools', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-opencode-setup');
+
+        expect(skill).toContain('Fresh Bootstrap Flow');
+        expect(skill).toContain('Plugin Installed But Tools Missing');
+        expect(skill).toContain('Testing Checklist');
+        expect(skill).toContain('mrkwiz_bridge_status');
+        expect(skill).toContain('mrkwiz_reset_callback_urls');
+        expect(skill).toContain('mrkwiz_do_pending_request');
+        expect(skill).toContain('mrkwiz_configure_mcp');
+        expect(skill).toContain('mrkwiz_get_quiz_context');
+        expect(skill).toContain('## mrkwiz.get_quiz_context');
+    });
+
+    it('renders design guidance without edit/apply tool instructions', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-quiz-design');
+
+        expect(skill).toContain('Trait Design');
+        expect(skill).toContain('Question Design');
+        expect(skill).toContain('First Steps');
+        expect(skill).toContain('Read any pending user request');
+        expect(skill).toContain('Handoff To Editing');
+        expect(skill).toContain('load `mrkwiz-quiz-edit`');
+        expect(skill).not.toContain('mrkwiz_apply_edit');
+        expect(skill).not.toContain('## QuizEditPatch');
+    });
+
+    it('renders edit guidance with generated schema docs and every dynamic MCP tool', async () => {
+        const skill = await renderMrKwizSkill('mrkwiz-quiz-edit');
+
+        expect(skill).toContain('## QuizEditPatch');
+        expect(skill).toContain('## QuizEditOperation');
+        expect(skill).toContain('mrkwiz_get_quiz_context');
+        expect(skill).toContain('mrkwiz_validate_edit');
+        expect(skill).toContain('mrkwiz_apply_edit');
+        expect(skill).toContain('Do not use `mrkwiz_configure_mcp`');
+
+        for (const tool of MRKWIZ_MCP_TOOLS) {
+            expect(skill).toContain(`mrkwiz.${tool.name}`);
+            expect(skill).toContain(tool.description);
+        }
+    });
+
+    it('does not render unknown skill names', async () => {
+        await expect(renderMrKwizSkill('not-a-real-skill')).resolves.toBeNull();
     });
 });
