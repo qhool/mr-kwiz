@@ -69,7 +69,7 @@ type MrKwizConfig = {
     version: 1;
 };
 
-type MrKwizMcpToolName = 'get_quiz_context' | 'get_question_context' | 'get_edit_capabilities' | 'validate_edit' | 'apply_edit';
+type MrKwizMcpToolName = 'get_quiz_context' | 'get_question_context' | 'search_questions' | 'get_edit_capabilities' | 'validate_edit' | 'apply_edit';
 
 type JsonRpcResponse = {
     error?: unknown;
@@ -989,6 +989,16 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 description: 'Visible plugin proxy for mrkwiz.get_question_context. Gets a full question, trait order, and old_question_hash for safe editing.',
                 async execute(args) {
                     return callActiveMcpTool('get_question_context', args);
+                },
+            }),
+            mrkwiz_search_questions: tool({
+                args: {
+                    query: tool.schema.any().describe('Search questions input object with keywords, tags, trait_filters, include_fields, include_summary_vectors, offset, and limit.'),
+                },
+                description: 'Visible plugin proxy for mrkwiz.search_questions. Searches questions with selectable fields, trait filters, summary vectors, and pagination.',
+                async execute(args) {
+                    const query = args.query && typeof args.query === 'object' ? (args.query as Record<string, unknown>) : {};
+                    return callActiveMcpTool('search_questions', query);
                 },
             }),
             mrkwiz_get_edit_capabilities: tool({

@@ -6,12 +6,20 @@ import { sha256Hex } from '../../src/lib/admin-token';
 import {
     applyQuizEditPatch,
     hashQuestion,
+    QuizEditValidationError,
     quizDefinitionSchema,
     quizEditPatchSchema,
     type QuizDefinition,
 } from '../../src/lib/quiz-definition';
 import { getMrKwizMcpToolsList } from '../../src/lib/mrkwiz-mcp-tools';
+import {
+    getAllQuestionSearchSummaryVectors,
+    QUESTION_SEARCH_SUMMARY_VECTORS,
+    searchQuestions,
+    type SearchToolIssue,
+} from '../../src/lib/question-search';
 import type { Database } from '../../src/types/database.generated';
+import { ZodError } from 'zod';
 
 import { type AppEnv, getAppEnv } from '../utils/env';
 import { createServerSupabaseClient } from '../utils/supabase';
@@ -47,6 +55,39 @@ const toolResult = (value: unknown) => ({
         },
     ],
 });
+
+const editToolResult = (
+    ok: boolean,
+    oldDefinitionVersion: number,
+    newDefinitionVersion: number | null,
+    errors: SearchToolIssue[] = [],
+    warnings: SearchToolIssue[] = []
+) =>
+    toolResult({
+        ok,
+        errors,
+        warnings,
+        old_definition_version: oldDefinitionVersion,
+        new_definition_version: newDefinitionVersion,
+    });
+
+const toolIssuesFromError = (error: unknown): SearchToolIssue[] => {
+    if (error instanceof ZodError) {
+        return error.issues.map((issue) => ({
+            code: 'VALIDATION_ERROR',
+            message: issue.message,
+            path: issue.path.length > 0 ? `/${issue.path.join('/')}` : undefined,
+        }));
+    }
+
+    if (error instanceof QuizEditValidationError) {
+        return error.issues.length > 0
+            ? error.issues.map((issue) => ({ code: 'QUIZ_EDIT_VALIDATION_ERROR', message: issue }))
+            : [{ code: 'QUIZ_EDIT_VALIDATION_ERROR', message: error.message }];
+    }
+
+    return [{ code: 'TOOL_ERROR', message: error instanceof Error ? error.message : 'MCP tool call failed.' }];
+};
 
 const getBearerToken = (request: Request): string | null => {
     const authorization = request.headers.get('authorization') ?? '';
@@ -152,6 +193,10 @@ const executeToolCall = async (ctx: McpAuthContext, name: string, args: unknown)
                     current_definition_version: ctx.quiz.current_definition_version,
                 },
                 definition: await summarizeDefinition(definition),
+                search_capabilities: {
+                    include_summary_vectors: QUESTION_SEARCH_SUMMARY_VECTORS,
+                },
+                question_summary_vectors: getAllQuestionSearchSummaryVectors(definition),
                 reminders: [
                     'Fetch question context before replacing or deleting a question.',
                     'Validate edits before applying them.',
@@ -170,6 +215,9 @@ const executeToolCall = async (ctx: McpAuthContext, name: string, args: unknown)
                 trait_order: definition.traits.map((trait) => trait.id),
             });
         }
+
+        case 'search_questions':
+            return toolResult(await searchQuestions(definition, params));
 
         case 'get_edit_capabilities':
             return toolResult({
@@ -201,31 +249,46 @@ const executeToolCall = async (ctx: McpAuthContext, name: string, args: unknown)
             });
 
         case 'validate_edit': {
-            const patch = quizEditPatchSchema.parse(params.patch);
-            const nextDefinition = await applyQuizEditPatch(definition, patch);
-            return toolResult({ ok: true, definition: await summarizeDefinition(nextDefinition) });
+            const oldVersion = ctx.quiz.current_definition_version;
+            try {
+                const patch = quizEditPatchSchema.parse(params.patch);
+                if (patch.base_definition_version !== oldVersion) {
+                    throw new QuizEditValidationError(`Definition version conflict. Current version is ${oldVersion}.`);
+                }
+
+                await applyQuizEditPatch(definition, patch);
+                return editToolResult(true, oldVersion, oldVersion + 1);
+            } catch (error) {
+                return editToolResult(false, oldVersion, null, toolIssuesFromError(error));
+            }
         }
 
         case 'apply_edit': {
-            const patch = quizEditPatchSchema.parse(params.patch);
-            if (patch.base_definition_version !== ctx.quiz.current_definition_version) {
-                throw new Error(`Definition version conflict. Current version is ${ctx.quiz.current_definition_version}.`);
+            const oldVersion = ctx.quiz.current_definition_version;
+            try {
+                const patch = quizEditPatchSchema.parse(params.patch);
+                if (patch.base_definition_version !== oldVersion) {
+                    throw new QuizEditValidationError(`Definition version conflict. Current version is ${oldVersion}.`);
+                }
+
+                const nextDefinition = await applyQuizEditPatch(definition, patch);
+                const nextVersion = oldVersion + 1;
+                const persistedDefinition = quizDefinitionSchema.parse({ ...nextDefinition, definition_version: nextVersion });
+                const { error } = await ctx.supabase
+                    .from('quizzes')
+                    .update({
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                        current_definition: persistedDefinition as any,
+                        current_definition_version: nextVersion,
+                        title: persistedDefinition.title,
+                        description: persistedDefinition.description,
+                    })
+                    .eq('id', ctx.quiz.id);
+                if (error) throw error;
+                return editToolResult(true, oldVersion, nextVersion);
+            } catch (error) {
+                return editToolResult(false, oldVersion, null, toolIssuesFromError(error));
             }
-            const nextDefinition = await applyQuizEditPatch(definition, patch);
-            const nextVersion = ctx.quiz.current_definition_version + 1;
-            const persistedDefinition = quizDefinitionSchema.parse({ ...nextDefinition, definition_version: nextVersion });
-            const { error } = await ctx.supabase
-                .from('quizzes')
-                .update({
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    current_definition: persistedDefinition as any,
-                    current_definition_version: nextVersion,
-                    title: persistedDefinition.title,
-                    description: persistedDefinition.description,
-                })
-                .eq('id', ctx.quiz.id);
-            if (error) throw error;
-            return toolResult({ ok: true, current_definition_version: nextVersion });
         }
 
         case 'set_callback_url': {
