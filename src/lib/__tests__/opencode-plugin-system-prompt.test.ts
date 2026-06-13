@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from '../../../packages/opencode-plugin/src/index';
+import { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from '../../../packages/opencode-plugin/src/prompt';
 
 const entry = { mcpName: 'mrkwiz_abc123def456' };
 
