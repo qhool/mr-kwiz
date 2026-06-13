@@ -261,7 +261,7 @@ const QuizEditPage: React.FC = () => {
     const { definition, error, isLoading, metadata, setDefinition, setError, setMetadata } = useAdminQuizDefinition(adminKey);
     const { editMode, setEditMode } = useAdminEditMode(adminKey);
     const {
-        activeBridgeToken,
+        connectedBridgeToken,
         bridgeError,
         bridgeMessage,
         bridgeStatuses,
@@ -507,16 +507,16 @@ const QuizEditPage: React.FC = () => {
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                             <button
-                                disabled={!activeBridgeToken || !metadata}
+                                disabled={!connectedBridgeToken || !metadata}
                                 onClick={() => {
-                                    void sendBridgeAction(activeBridgeToken, 'open-quiz');
+                                    void sendBridgeAction(connectedBridgeToken, 'open-quiz');
                                 }}
                                 style={{
                                     background: colors.accent,
                                     border: 'none',
                                     borderRadius: 999,
                                     color: colors.accent_text,
-                                    cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                                    cursor: connectedBridgeToken && metadata ? 'pointer' : 'not-allowed',
                                     padding: '0.65rem 1rem',
                                 }}
                                 type="button"
@@ -551,7 +551,7 @@ const QuizEditPage: React.FC = () => {
                         {tokens.map((token) => {
                             const status = getQuizMcpTokenStatus(token);
                             const bridgeState = getTokenBridgeState(token, bridgeStatuses[token.id]);
-                            const bridgeLabel = bridgeState === 'active' ? 'active' : bridgeState === 'connected' ? 'connected' : bridgeState === 'valid' ? 'valid' : status;
+                            const bridgeLabel = bridgeState === 'connected' ? 'connected' : bridgeState === 'valid' ? 'valid' : status;
                             return (
                                 <article key={token.id} style={{ border: `1px solid ${colors.panel_border}`, borderRadius: 14, padding: '0.9rem' }}>
                                     <div style={{ alignItems: 'center', display: 'flex', gap: '0.75rem', justifyContent: 'space-between' }}>
@@ -568,7 +568,7 @@ const QuizEditPage: React.FC = () => {
                                                 style={{ background: colors.accent, border: 'none', borderRadius: 999, color: colors.accent_text, cursor: 'pointer', padding: '0.45rem 0.8rem' }}
                                                 type="button"
                                             >
-                                                {bridgeState === 'active' ? 'Open in OpenCode' : 'Open in OpenCode (make active)'}
+                                                Open in OpenCode
                                             </button>
                                             <button
                                                 onClick={() => { void sendBridgeAction(token, 'edit-theme'); }}

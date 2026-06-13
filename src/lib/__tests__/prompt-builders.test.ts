@@ -91,9 +91,11 @@ describe('renderMrKwizSkill', () => {
         expect(skill).toContain('mrkwiz_bridge_status');
         expect(skill).toContain('mrkwiz_reset_callback_urls');
         expect(skill).toContain('mrkwiz_do_pending_request');
+        expect(skill).toContain('mrkwiz_get_system_prompt');
+        expect(skill).toContain('mrkwiz_get_tool_snapshot');
         expect(skill).toContain('mrkwiz_configure_mcp');
-        expect(skill).toContain('mrkwiz_get_quiz_context');
-        expect(skill).toContain('## mrkwiz.get_quiz_context');
+        expect(skill).toContain('token-specific MCP server');
+        expect(skill).toContain('## functions.mrkwiz_get_quiz_context');
     });
 
     it('renders design guidance without edit/apply tool instructions', async () => {
@@ -105,7 +107,7 @@ describe('renderMrKwizSkill', () => {
         expect(skill).toContain('Read any pending user request');
         expect(skill).toContain('Handoff To Editing');
         expect(skill).toContain('load `mrkwiz-quiz-edit`');
-        expect(skill).not.toContain('mrkwiz_apply_edit');
+        expect(skill).not.toContain('_apply_edit');
         expect(skill).not.toContain('## QuizEditPatch');
     });
 
@@ -114,13 +116,13 @@ describe('renderMrKwizSkill', () => {
 
         expect(skill).toContain('## QuizEditPatch');
         expect(skill).toContain('## QuizEditOperation');
-        expect(skill).toContain('mrkwiz_get_quiz_context');
-        expect(skill).toContain('mrkwiz_validate_edit');
-        expect(skill).toContain('mrkwiz_apply_edit');
-        expect(skill).toContain('Do not use `mrkwiz_configure_mcp`');
+        expect(skill).toContain('functions.<mcp_name>_get_quiz_context');
+        expect(skill).toContain('functions.<mcp_name>_validate_edit');
+        expect(skill).toContain('functions.<mcp_name>_apply_edit');
+        expect(skill).toContain('Do not use bridge setup helpers');
 
         for (const tool of MRKWIZ_MCP_TOOLS) {
-            expect(skill).toContain(`mrkwiz.${tool.name}`);
+            expect(skill).toContain(`functions.mrkwiz_${tool.name}`);
             expect(skill).toContain(tool.description);
         }
     });
