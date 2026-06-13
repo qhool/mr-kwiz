@@ -79,7 +79,7 @@ const QuizPreviewPage: React.FC = () => {
     } = useAdminQuizDefinition(adminKey);
     const { editMode } = useAdminEditMode(adminKey);
     const {
-        activeBridgeToken,
+        connectedBridgeToken,
         bridgeError,
         bridgeMessage,
         sendBridgeAction,
@@ -170,7 +170,7 @@ const QuizPreviewPage: React.FC = () => {
         setMessage(null);
 
         if (editMode === 'opencode') {
-            await sendBridgeAction(activeBridgeToken, 'edit-question', { question_id: question.id });
+            await sendBridgeAction(connectedBridgeToken, 'edit-question', { question_id: question.id });
             return;
         }
 
@@ -243,16 +243,16 @@ const QuizPreviewPage: React.FC = () => {
 
         return (
             <button
-                disabled={!activeBridgeToken || !metadata}
+                disabled={!connectedBridgeToken || !metadata}
                 onClick={() => {
-                    void sendBridgeAction(activeBridgeToken, action, payload);
+                    void sendBridgeAction(connectedBridgeToken, action, payload);
                 }}
                 style={{
                     background: colors.accent,
                     border: 'none',
                     borderRadius: 999,
                     color: colors.accent_text,
-                    cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                    cursor: connectedBridgeToken && metadata ? 'pointer' : 'not-allowed',
                     padding: '0.62rem 1rem',
                 }}
                 type="button"
@@ -478,16 +478,16 @@ const QuizPreviewPage: React.FC = () => {
                         {editMode === 'opencode' ? (
                             <div style={{ borderTop: `1px solid ${colors.panel_border}`, marginTop: '0.9rem', paddingTop: '0.9rem' }}>
                                 <button
-                                    disabled={!activeBridgeToken || !metadata}
+                                    disabled={!connectedBridgeToken || !metadata}
                                     onClick={() => {
-                                        void sendBridgeAction(activeBridgeToken, 'open-quiz');
+                                        void sendBridgeAction(connectedBridgeToken, 'open-quiz');
                                     }}
                                     style={{
                                         background: colors.accent,
                                         border: 'none',
                                         borderRadius: 999,
                                         color: colors.accent_text,
-                                        cursor: activeBridgeToken && metadata ? 'pointer' : 'not-allowed',
+                                        cursor: connectedBridgeToken && metadata ? 'pointer' : 'not-allowed',
                                         padding: '0.65rem 1rem',
                                         width: '100%',
                                     }}
@@ -495,7 +495,7 @@ const QuizPreviewPage: React.FC = () => {
                                 >
                                     Open in OpenCode
                                 </button>
-                                {!activeBridgeToken ? (
+                                {!connectedBridgeToken ? (
                                     <p style={{ color: colors.muted_text, fontSize: '0.86rem', margin: '0.6rem 0 0' }}>
                                         Configure an OpenCode token from the Edit tab.
                                     </p>

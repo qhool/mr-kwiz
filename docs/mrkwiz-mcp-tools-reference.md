@@ -2,11 +2,11 @@
 
 Generated from the hosted MrKwiz MCP tool definitions used by the server.
 
-OpenCode exposes these dynamic MCP tools under the `mrkwiz` namespace. Use names such as `mrkwiz.get_quiz_context`, `mrkwiz.validate_edit`, and `mrkwiz.apply_edit`.
+OpenCode exposes these dynamic MCP tools with fully qualified tool names. If the server is named `mrkwiz`, use names such as `functions.mrkwiz_get_quiz_context`, `functions.mrkwiz_validate_edit`, and `functions.mrkwiz_apply_edit`.
 
-These tools may not appear in OpenCode static helper/tool lists because they are discovered from the active MCP server at runtime.
+These tools may not appear in OpenCode static helper/tool lists because they are discovered from the connected MCP server at runtime.
 
-## mrkwiz.get_quiz_context
+## functions.mrkwiz_get_quiz_context
 
 Get the current MrKwiz quiz context and editing reminders.
 
@@ -19,7 +19,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.get_question_context
+## functions.mrkwiz_get_question_context
 
 Get a full question, trait order, and old_question_hash for safe editing.
 
@@ -39,7 +39,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.search_questions
+## functions.mrkwiz_search_questions
 
 Search questions by keywords, tags, trait metric ranges, activity flags, and selectable return fields.
 
@@ -210,7 +210,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.get_edit_capabilities
+## functions.mrkwiz_get_edit_capabilities
 
 List supported edit operations for the current quiz state.
 
@@ -223,7 +223,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.validate_edit
+## functions.mrkwiz_validate_edit
 
 Validate a QuizEditPatch without saving it.
 
@@ -243,7 +243,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.apply_edit
+## functions.mrkwiz_apply_edit
 
 Apply a validated QuizEditPatch to the quiz.
 
@@ -263,7 +263,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.set_callback_url
+## functions.mrkwiz_set_callback_url
 
 Register the local OpenCode bridge callback URL for this token.
 
@@ -286,7 +286,7 @@ Input schema:
 }
 ```
 
-## mrkwiz.clear_callback_url
+## functions.mrkwiz_clear_callback_url
 
 Clear the registered local OpenCode bridge callback URL.
 

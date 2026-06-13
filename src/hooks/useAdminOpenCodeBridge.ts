@@ -14,12 +14,13 @@ type CreateTokenResponse = {
 };
 
 export type BridgeTokenStatus = {
-    active?: boolean;
     connected?: boolean;
+    mcp_name?: string;
+    session?: { id?: string; quiz_title?: string | null; updated_at?: string } | null;
     token_hash?: string;
 };
 
-export type TokenBridgeState = 'valid' | 'connected' | 'active' | 'unavailable';
+export type TokenBridgeState = 'valid' | 'connected' | 'unavailable';
 
 export type AdminBridgeAction =
     | 'open-quiz'
@@ -67,11 +68,11 @@ const buildBootstrapPrompt = (input: {
         '1. Configure OpenCode to load MrKwiz skills from the skills URL.',
         '2. Configure OpenCode to install the npm plugin @mrkwiz/opencode-plugin.',
         '3. If the mrkwiz_configure_default_model tool is available, set the MrKwiz plugin default model to the exact model currently running this bootstrap conversation. Use the provider/model identifier from your system context. This prevents MrKwiz-created sessions from selecting a model I cannot use.',
-        '4. If the mrkwiz_configure_mcp tool is available, call it with the MCP token, base URL, and label below. This saves the token in the MrKwiz OpenCode plugin config and registers a callback URL. It does not activate MCP until the admin page sends an OpenCode action for this token.',
+        '4. If the mrkwiz_configure_mcp tool is available, call it with the MCP token, base URL, and label below. This saves the token in the MrKwiz OpenCode plugin config and registers a callback URL. The plugin creates a token-specific MCP server and session when the admin page sends an OpenCode action for this token.',
         '5. If mrkwiz_configure_default_model or mrkwiz_configure_mcp is not available yet, install or fix the plugin first. Do not manually configure the MrKwiz MCP server in opencode.json.',
         '6. Make sure .opencode/mrkwiz.json is ignored by git and never committed because it contains raw MCP tokens and local model preferences.',
         '7. Tell me clearly if I need to quit and restart OpenCode for plugin/config changes to take effect.',
-        '8. After the plugin saves this token, refresh the MrKwiz admin Edit page. It should show this token as connected. Clicking Open in OpenCode activates MCP for this token.',
+        '8. After the plugin saves this token, refresh the MrKwiz admin Edit page. It should show this token as connected. Clicking Open in OpenCode creates or reuses the token-owned OpenCode session and injects the MCP server name.',
         '9. Confirm when the MrKwiz admin page should show OpenCode buttons.',
         '',
         'Recommended OpenCode config shape:',
@@ -104,7 +105,6 @@ const buildBootstrapPrompt = (input: {
 
 export const getTokenBridgeState = (token: QuizMcpToken, bridgeStatus?: BridgeTokenStatus): TokenBridgeState => {
     if (getQuizMcpTokenStatus(token) !== 'active') return 'unavailable';
-    if (bridgeStatus?.active) return 'active';
     if (bridgeStatus?.connected) return 'connected';
     return 'valid';
 };
@@ -188,9 +188,8 @@ export const useAdminOpenCodeBridge = (adminKey: string | undefined, metadata: A
         };
     }, [adminKey, tokens]);
 
-    const activeBridgeToken = React.useMemo(() => {
+    const connectedBridgeToken = React.useMemo(() => {
         return (
-            tokens.find((token) => getTokenBridgeState(token, bridgeStatuses[token.id]) === 'active') ??
             tokens.find((token) => getTokenBridgeState(token, bridgeStatuses[token.id]) === 'connected') ??
             tokens.find((token) => token.callback_url && getQuizMcpTokenStatus(token) === 'active') ??
             null
@@ -305,7 +304,7 @@ export const useAdminOpenCodeBridge = (adminKey: string | undefined, metadata: A
     );
 
     return {
-        activeBridgeToken,
+        connectedBridgeToken,
         bridgeError,
         bridgeMessage,
         bridgeStatuses,

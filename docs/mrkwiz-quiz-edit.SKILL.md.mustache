@@ -1,48 +1,39 @@
 ---
 name: mrkwiz-quiz-edit
-description: Use when applying saved MrKwiz quiz edits with MCP/plugin tools: fetch context, build QuizEditPatch, validate, and apply after confirmation.
+description: Use when applying saved MrKwiz quiz edits with MCP tools: fetch context, build QuizEditPatch, validate, and apply after confirmation.
 ---
 
 # MrKwiz Quiz Edit
 
-Use this skill only to make saved changes to a MrKwiz quiz. Assume OpenCode setup is already correct, diagnostics already passed, and a MrKwiz token is active.
+Use this skill only to make saved changes to a MrKwiz quiz. Assume OpenCode setup is already correct, diagnostics already passed, and the session prompt includes a MrKwiz MCP server name.
 
 Your job is operational: fetch context, make the smallest correct `QuizEditPatch`, validate it, then apply it only when appropriate.
 
 ## Tool Choice
 
-Use visible plugin proxy tools by default because they appear in OpenCode's normal tool list:
+Use the MrKwiz MCP server name injected into the session prompt. Tool names have this shape:
 
-- `mrkwiz_get_quiz_context`
-- `mrkwiz_get_question_context`
-- `mrkwiz_search_questions`
-- `mrkwiz_get_edit_capabilities`
-- `mrkwiz_validate_edit`
-- `mrkwiz_apply_edit`
+- `functions.<mcp_name>_get_quiz_context`
+- `functions.<mcp_name>_get_question_context`
+- `functions.<mcp_name>_search_questions`
+- `functions.<mcp_name>_get_edit_capabilities`
+- `functions.<mcp_name>_validate_edit`
+- `functions.<mcp_name>_apply_edit`
 
-If dynamic `mrkwiz.*` MCP tools are visible, they are equivalent:
-
-- `mrkwiz.get_quiz_context`
-- `mrkwiz.get_question_context`
-- `mrkwiz.search_questions`
-- `mrkwiz.get_edit_capabilities`
-- `mrkwiz.validate_edit`
-- `mrkwiz.apply_edit`
-
-Do not use `mrkwiz_configure_mcp`, `mrkwiz_configure_default_model`, or bridge setup helpers for editing. Those are setup tools only.
+Do not use bridge setup helpers for editing. Those are setup tools only.
 
 ## Required Workflow
 
 For every saved edit:
 
-1. Call `mrkwiz_get_quiz_context` first.
-2. Use `mrkwiz_search_questions` when you need to find questions by keywords, tags, trait filters, or summary vectors.
-3. If replacing or deleting a question, call `mrkwiz_get_question_context` for that question and preserve `old_question_hash`.
+1. Call `functions.<mcp_name>_get_quiz_context` first.
+2. Use `functions.<mcp_name>_search_questions` when you need to find questions by keywords, tags, trait filters, or summary vectors.
+3. If replacing or deleting a question, call `functions.<mcp_name>_get_question_context` for that question and preserve `old_question_hash`.
 4. Draft the smallest correct `QuizEditPatch`.
-5. Call `mrkwiz_validate_edit` with the patch.
+5. Call `functions.<mcp_name>_validate_edit` with the patch.
 6. If validation fails, fix the patch and validate again.
-7. If validation succeeds and the user clearly requested direct application, call `mrkwiz_apply_edit`.
-8. If validation succeeds but direct application was not requested, ask for confirmation before calling `mrkwiz_apply_edit`.
+7. If validation succeeds and the user clearly requested direct application, call `functions.<mcp_name>_apply_edit`.
+8. If validation succeeds but direct application was not requested, ask for confirmation before calling `functions.<mcp_name>_apply_edit`.
 
 Never apply a patch that has not validated successfully.
 
@@ -65,7 +56,7 @@ Trait order defines matrix column order. Response order defines matrix row order
 
 ## Error Handling
 
-If the active token is missing, expired, revoked, or connected to the wrong quiz, stop editing and load `mrkwiz-opencode-setup`.
+If the MCP server is missing, expired, revoked, or connected to the wrong quiz, stop editing and load `mrkwiz-opencode-setup`.
 
 If `base_definition_version` conflicts, fetch context again and rebuild the patch against the current version.
 
@@ -73,11 +64,11 @@ If a question hash conflict occurs, fetch that question again and ask the user h
 
 ## Fallback
 
-If MCP/plugin tools are unavailable but the user still wants a patch, use paste-back mode: produce exactly one valid `QuizEditPatch` JSON object and tell the user to paste it into the MrKwiz patch box. Do not pretend the patch was saved.
+If MCP tools are unavailable but the user still wants a patch, use paste-back mode: produce exactly one valid `QuizEditPatch` JSON object and tell the user to paste it into the MrKwiz patch box. Do not pretend the patch was saved.
 
 ## MCP Tool Reference
 
-{{{mcp_tools_sha256_d8f6e19dd8189d6e6dadabd1994b8c54229698186e57c5573108cb64d6ec8b73}}}
+{{{mcp_tools_sha256_cac20e41871bc542cd23b950b210905eb79a6f39d7feee78f617152a03571da4}}}
 
 ## QuizEditPatch Schema Reference
 
