@@ -1,15 +1,15 @@
 import { type Plugin, tool } from '@opencode-ai/plugin';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import path from 'node:path';
 
-import { captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt } from './prompt';
-import type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt';
+import { captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt } from './prompt.ts';
+import type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt.ts';
 
-export { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from './prompt';
-export type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt';
+export { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from './prompt.ts';
+export type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt.ts';
 
 type BridgeAction = 'open_quiz' | 'edit_question' | 'edit_theme' | 'edit_archetypes' | 'edit_intro' | 'edit_scoring';
 
@@ -36,8 +36,22 @@ type DiagnosticCheck = {
 
 type DiagnosticReport = {
     checks: DiagnosticCheck[];
+    mcp_activation?: McpActivation;
     ok: boolean;
     token_hash: string;
+};
+
+type McpActivation = {
+    changed: boolean;
+    configured_this_prompt: boolean;
+    instance_state_key: string;
+    mcp_name: string;
+    plugin_directory: string;
+    reason: string;
+    status_after: string | null;
+    status_before: string | null;
+    target_directory: string;
+    tool_prefix: string;
 };
 
 type PendingBridgeRequest = BridgeRequest & {
@@ -57,6 +71,7 @@ type StoredToken = {
     };
     session?: {
         createdAt: string;
+        directory?: string;
         id: string;
         lastAction?: BridgeAction;
         quizId?: string;
@@ -273,8 +288,10 @@ const titleForAction = (payload: BridgePayload): string => {
 };
 
 export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
-    const configFile = path.join(process.cwd(), '.opencode', 'mrkwiz.json');
-    const legacyTokenFile = path.join(process.cwd(), '.opencode', 'mrkwiz-mcp-token');
+    const opencodeDir = path.join(process.cwd(), '.opencode');
+    const configFile = path.join(opencodeDir, 'mrkwiz.json');
+    const legacyTokenFile = path.join(opencodeDir, 'mrkwiz-mcp-token');
+    const logFile = path.join(opencodeDir, 'mrkwiz-plugin.log');
     let config = emptyConfig();
     let server: Server | null = null;
     let serverPort = 0;
@@ -284,10 +301,26 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     const registeredCallbackUrls = new Map<string, string>();
     const debugStdout = process.env.MRKWIZ_PLUGIN_DEBUG_STDOUT === '1';
 
+    const redact = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(redact);
+        if (!value || typeof value !== 'object') return typeof value === 'string' && value.startsWith('Bearer ') ? 'Bearer [redacted]' : value;
+        const output: Record<string, unknown> = {};
+        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+            const lower = key.toLowerCase();
+            output[key] = lower === 'token' || lower === 'authorization' || lower === 'headers'
+                ? '[redacted]'
+                : redact(item);
+        }
+        return output;
+    };
+
     const debug = async (message: string, extra?: Record<string, unknown>) => {
-        if (debugStdout) console.info(`[mrkwiz-opencode-plugin] ${message}`, extra ?? {});
+        const redactedExtra = redact(extra ?? {}) as Record<string, unknown>;
+        if (debugStdout) console.info(`[mrkwiz-opencode-plugin] ${message}`, redactedExtra);
+        mkdirSync(opencodeDir, { recursive: true });
+        await appendFile(logFile, `${JSON.stringify({ at: new Date().toISOString(), extra: redactedExtra, level: 'info', message })}\n`, 'utf8').catch(() => {});
         await client.app
-            .log({ body: { service: 'mrkwiz-opencode-plugin', level: 'info', message, extra } })
+            .log({ body: { service: 'mrkwiz-opencode-plugin', level: 'info', message, extra: redactedExtra } })
             .catch(() => {});
     };
 
@@ -305,6 +338,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 session: entry.session && typeof entry.session.id === 'string'
                     ? {
                           createdAt: entry.session.createdAt || now,
+                          directory: typeof entry.session.directory === 'string' && entry.session.directory ? entry.session.directory : undefined,
                           id: entry.session.id,
                           lastAction: isBridgeAction(entry.session.lastAction) ? entry.session.lastAction : undefined,
                           quizId: entry.session.quizId,
@@ -393,20 +427,23 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
     const tokenCallbackUrl = (tokenHash: string) => `http://127.0.0.1:${serverPort}/mrkwiz/${nonce}/tokens/${tokenHash}`;
 
-    const getOpenCodeMcpStatus = async (name?: string): Promise<{ name: string | null; status: string | null }> => {
+    const targetDirectoryForEntry = (entry: StoredToken): string => entry.session?.directory || directory;
+
+    const getOpenCodeMcpStatus = async (name?: string, targetDirectory = directory): Promise<{ name: string | null; status: string | null }> => {
         try {
-            const result = await client.mcp.status({ query: { directory } });
+            const result = await client.mcp.status({ query: { directory: targetDirectory } });
             const servers = (result.data as Record<string, { status?: string }> | undefined) ?? {};
             const mcpName = name ?? ['mrkwiz', 'mrkwiz-debug'].find((candidate) => typeof servers[candidate]?.status === 'string') ?? null;
             return { name: mcpName, status: mcpName ? (servers[mcpName]?.status ?? null) : null };
         } catch (error) {
-            await debug('Failed to read OpenCode MCP status.', { error: error instanceof Error ? error.message : String(error) });
+            await debug('Failed to read OpenCode MCP status.', { error: error instanceof Error ? error.message : String(error), target_directory: targetDirectory });
             return { name: null, status: null };
         }
     };
 
     const publicTokenStatus = async (entry: StoredToken) => {
-        const mcp = await getOpenCodeMcpStatus(entry.mcpName);
+        const targetDirectory = targetDirectoryForEntry(entry);
+        const mcp = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
         return {
             base_url: entry.baseUrl,
             callback_url: tokenCallbackUrl(entry.tokenHash),
@@ -423,12 +460,14 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 : null,
             session: entry.session
                 ? {
+                      directory: entry.session.directory ?? null,
                       id: entry.session.id,
                       quiz_id: entry.session.quizId ?? entry.quiz?.id ?? null,
                       quiz_title: entry.session.quizTitle ?? entry.quiz?.title ?? null,
                       updated_at: entry.session.updatedAt,
                   }
                 : null,
+            target_directory: targetDirectory,
             token_hash: entry.tokenHash,
         };
     };
@@ -442,6 +481,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             cwd: process.cwd(),
             default_model: formatModel(config.defaultModel),
             directory,
+            log_file: logFile,
             running: true,
             supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes', 'edit_intro', 'edit_scoring'],
             tokens: mcpStatuses,
@@ -624,9 +664,22 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         return next;
     };
 
-    const ensureMcpReady = async (entry: StoredToken, reason: string) => {
-        const current = await getOpenCodeMcpStatus(entry.mcpName);
-        if (current.status === 'connected') return { changed: false, name: entry.mcpName, status: current.status };
+    const ensureMcpReady = async (entry: StoredToken, reason: string, targetDirectory: string): Promise<McpActivation> => {
+        const current = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
+        if (current.status === 'connected') {
+            return {
+                changed: false,
+                configured_this_prompt: false,
+                instance_state_key: targetDirectory,
+                mcp_name: entry.mcpName,
+                plugin_directory: directory,
+                reason,
+                status_after: current.status,
+                status_before: current.status,
+                target_directory: targetDirectory,
+                tool_prefix: `${entry.mcpName}_`,
+            };
+        }
 
         await client.tui.showToast({
             body: {
@@ -645,22 +698,85 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 },
                 name: entry.mcpName,
             },
-            query: { directory },
+            query: { directory: targetDirectory },
         });
-        const connectResult = await client.mcp.connect({ path: { name: entry.mcpName }, query: { directory } });
+        const connectResult = await client.mcp.connect({ path: { name: entry.mcpName }, query: { directory: targetDirectory } });
         await client.tui.showToast({
             body: {
                 message: `MrKwiz MCP ready: ${entry.mcpName}`,
                 variant: 'success',
             },
         }).catch(() => {});
-        await debug('MCP token server ready.', { add_result: addResult.data, connect_result: connectResult.data, directory, mcp_name: entry.mcpName, previous_status: current, reason, token_hash: entry.tokenHash });
-        return { addResult: addResult.data, changed: true, connectResult: connectResult.data, name: entry.mcpName };
+        const after = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
+        const activation: McpActivation = {
+            changed: true,
+            configured_this_prompt: true,
+            instance_state_key: targetDirectory,
+            mcp_name: entry.mcpName,
+            plugin_directory: directory,
+            reason,
+            status_after: after.status,
+            status_before: current.status,
+            target_directory: targetDirectory,
+            tool_prefix: `${entry.mcpName}_`,
+        };
+        await debug('MCP token server ready.', { activation, add_result: addResult.data, connect_result: connectResult.data, previous_status: current, token_hash: entry.tokenHash });
+        return activation;
     };
 
-    const runDiagnostics = async (entry: StoredToken, request: BridgeRequest): Promise<DiagnosticReport> => {
+    const fallbackMcpActivation = (entry: StoredToken, reason: string, targetDirectory: string): McpActivation => ({
+        changed: false,
+        configured_this_prompt: false,
+        instance_state_key: targetDirectory,
+        mcp_name: entry.mcpName,
+        plugin_directory: directory,
+        reason,
+        status_after: null,
+        status_before: null,
+        target_directory: targetDirectory,
+        tool_prefix: `${entry.mcpName}_`,
+    });
+
+    const mcpStatusMessage = (sessionId: string, activation: McpActivation): string => [
+        'MrKwiz plugin status',
+        '',
+        `MCP server: ${activation.mcp_name}`,
+        `Injected prompt session: ${sessionId}`,
+        `Plugin startup directory: ${activation.plugin_directory}`,
+        `Prompt target directory: ${activation.target_directory}`,
+        `OpenCode MCP InstanceState key: ${activation.instance_state_key}`,
+        `MCP status before setup: ${activation.status_before ?? 'not reported'}`,
+        `MCP status after setup: ${activation.status_after ?? 'not reported'}`,
+        `Configured MCP during this prompt: ${activation.configured_this_prompt ? 'yes' : 'no'}`,
+        `Expected OpenCode tool prefix: ${activation.tool_prefix}`,
+        `Reason: ${activation.reason}`,
+    ].join('\n');
+
+    const appendMcpStatusPrompt = async (sessionId: string, activation: McpActivation) => {
+        const message = mcpStatusMessage(sessionId, activation);
+        try {
+            await client.session.prompt({
+                body: {
+                    noReply: true,
+                    parts: [{ text: message, type: 'text' }],
+                },
+                path: { id: sessionId },
+                query: { directory: activation.target_directory },
+            });
+            await debug('Appended MrKwiz MCP no-reply status prompt.', { activation, session_id: sessionId });
+        } catch (error) {
+            await debug('Failed to append MrKwiz MCP no-reply status prompt.', {
+                activation,
+                error: error instanceof Error ? error.message : String(error),
+                session_id: sessionId,
+            });
+        }
+    };
+
+    const runDiagnostics = async (entry: StoredToken, request: BridgeRequest, targetDirectory: string): Promise<DiagnosticReport> => {
         const checks: DiagnosticCheck[] = [];
         const addCheck = (check: DiagnosticCheck) => checks.push(check);
+        let mcpActivation: McpActivation | undefined;
 
         addCheck({
             details: { action: request.action, base_url: entry.baseUrl, callback_url: tokenCallbackUrl(entry.tokenHash) },
@@ -670,10 +786,11 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
         let activated = false;
         try {
-            const activation = await ensureMcpReady(entry, request.action);
+            const activation = await ensureMcpReady(entry, request.action, targetDirectory);
+            mcpActivation = activation;
             activated = true;
             addCheck({
-                details: { changed: activation.changed, mcp_name: entry.mcpName },
+                details: { changed: activation.changed, instance_state_key: activation.instance_state_key, mcp_name: entry.mcpName, target_directory: targetDirectory },
                 message: 'OpenCode MCP server setup succeeded.',
                 ok: true,
             });
@@ -691,9 +808,9 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             });
         }
 
-        const mcpStatus = await getOpenCodeMcpStatus(entry.mcpName);
+        const mcpStatus = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
         addCheck({
-            details: mcpStatus,
+            details: { ...mcpStatus, instance_state_key: targetDirectory, target_directory: targetDirectory },
             message: mcpStatus.status ? 'OpenCode reports this MrKwiz MCP server.' : 'OpenCode does not report this MrKwiz MCP server.',
             ok: !!mcpStatus.status,
         });
@@ -715,56 +832,79 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             }
         }
 
-        return { checks, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
+        return { checks, mcp_activation: mcpActivation, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
     };
 
-    const promptSession = async (sessionId: string, prompt: string, model: ModelConfig | undefined) => {
+    const promptSession = async (entry: StoredToken, sessionId: string, prompt: string, model: ModelConfig | undefined, activation: McpActivation) => {
+        await appendMcpStatusPrompt(sessionId, activation);
         await client.session.promptAsync({
             body: {
                 model,
                 parts: [{ text: prompt, type: 'text' }],
             },
             path: { id: sessionId },
-            query: { directory },
+            query: { directory: activation.target_directory },
         });
+        await debug('Sent MrKwiz injected prompt.', { activation, mcp_name: entry.mcpName, session_id: sessionId, token_hash: entry.tokenHash });
     };
 
-    const createSessionForPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, model: ModelConfig | undefined) => {
+    const createSessionForPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, model: ModelConfig | undefined, activation: McpActivation) => {
         const session = await client.session.create({
             body: { title: titleForAction(payload) },
-            query: { directory },
+            query: { directory: activation.target_directory },
         });
         if (!session.data?.id) {
             await debug('OpenCode session.create did not return a session id.', { response: session.response, data: session.data });
             throw new Error('OpenCode did not return a session id.');
         }
 
-        await promptSession(session.data.id, prompt, model);
+        const now = new Date().toISOString();
+        const quizId = payload.quiz_id?.trim();
+        entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
+        entry.session = {
+            createdAt: now,
+            directory: activation.target_directory,
+            id: session.data.id,
+            lastAction: payload.action,
+            quizId: quizId ?? entry.quiz?.id,
+            quizTitle: payload.quiz_title ?? entry.quiz?.title,
+            updatedAt: now,
+        };
+        entry.updatedAt = now;
+        config.tokens[entry.tokenHash] = entry;
+        await saveConfig();
 
-        await debug('Created MrKwiz OpenCode session.', { mcp_name: entry.mcpName, session_id: session.data.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+        await promptSession(entry, session.data.id, prompt, model, activation);
+
+        await debug('Created MrKwiz OpenCode session.', { mcp_name: entry.mcpName, session_id: session.data.id, target_directory: activation.target_directory, title: titleForAction(payload), token_hash: entry.tokenHash });
         return session.data;
     };
 
     const tokenForSession = (sessionId: string): StoredToken | undefined => tokenEntries(config).find((entry) => entry.session?.id === sessionId);
 
-    const storedSessionIsVisible = async (entry: StoredToken): Promise<boolean> => {
+    const storedSessionIsVisible = async (entry: StoredToken, targetDirectory: string): Promise<boolean> => {
         if (!entry.session?.id) return false;
-        const sessions = await client.session.list({ query: { directory } });
+        const sessions = await client.session.list({ query: { directory: targetDirectory } });
         return !!sessions.data?.some((session) => session.id === entry.session!.id);
     };
 
-    const sendPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, options: { ensureMcp?: boolean } = {}) => {
-        if (options.ensureMcp !== false) await ensureMcpReady(entry, payload.action ?? 'open_quiz');
+    const sendPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, options: { ensureMcp?: boolean; mcpActivation?: McpActivation; targetDirectory?: string } = {}) => {
+        const targetDirectory = options.targetDirectory ?? targetDirectoryForEntry(entry);
+        const activation = options.mcpActivation
+            ?? (options.ensureMcp === false
+                ? fallbackMcpActivation(entry, payload.action ?? 'open_quiz', targetDirectory)
+                : await ensureMcpReady(entry, payload.action ?? 'open_quiz', targetDirectory));
         const model = config.defaultModel ? { modelID: config.defaultModel.modelID, providerID: config.defaultModel.providerID } : undefined;
         const quizId = payload.quiz_id?.trim();
 
-        if (entry.session && await storedSessionIsVisible(entry)) {
+        if (entry.session && await storedSessionIsVisible(entry, targetDirectory)) {
             try {
-                await promptSession(entry.session.id, prompt, model);
+                await promptSession(entry, entry.session.id, prompt, model, activation);
                 const now = new Date().toISOString();
                 entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
                 entry.session = {
                     ...entry.session,
+                    directory: targetDirectory,
                     lastAction: payload.action,
                     quizId: quizId ?? entry.session.quizId,
                     quizTitle: payload.quiz_title ?? entry.session.quizTitle,
@@ -773,7 +913,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 entry.updatedAt = now;
                 config.tokens[entry.tokenHash] = entry;
                 await saveConfig();
-                await debug('Reused MrKwiz OpenCode session.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: entry.session.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+                await debug('Reused MrKwiz OpenCode session.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: entry.session.id, target_directory: targetDirectory, title: titleForAction(payload), token_hash: entry.tokenHash });
                 return { id: entry.session.id };
             } catch (error) {
                 await debug('Stored MrKwiz OpenCode session could not be reused; creating replacement.', {
@@ -781,6 +921,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     mcp_name: entry.mcpName,
                     quiz_id: quizId,
                     session_id: entry.session.id,
+                    target_directory: targetDirectory,
                     token_hash: entry.tokenHash,
                 });
                 delete entry.session;
@@ -789,11 +930,12 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             }
         }
 
-        const session = await createSessionForPrompt(entry, prompt, payload, model);
+        const session = await createSessionForPrompt(entry, prompt, payload, model, activation);
         const now = new Date().toISOString();
         entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
         entry.session = {
             createdAt: now,
+            directory: targetDirectory,
             id: session.id,
             lastAction: payload.action,
             quizId: quizId ?? entry.quiz?.id,
@@ -803,7 +945,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         entry.updatedAt = now;
         config.tokens[entry.tokenHash] = entry;
         await saveConfig();
-        await debug('Tracked MrKwiz OpenCode session for token.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: session.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+        await debug('Tracked MrKwiz OpenCode session for token.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: session.id, target_directory: targetDirectory, title: titleForAction(payload), token_hash: entry.tokenHash });
         return session;
     };
 
@@ -834,20 +976,21 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     const handleBridgeRequest = async (request: BridgeRequest) => {
         const entry = config.tokens[request.tokenHash];
         if (!entry) throw new Error(`Unknown MrKwiz MCP token hash: ${request.tokenHash}`);
+        const targetDirectory = targetDirectoryForEntry(entry);
 
         scheduleCallbackRegistration(entry, request.action);
-        const diagnostics = await runDiagnostics(entry, request);
+        const diagnostics = await runDiagnostics(entry, request, targetDirectory);
 
         if (diagnostics.ok) {
             const prompt = buildDesignPrompt(request, diagnostics);
-            const session = await sendPrompt(entry, prompt, request.payload);
+            const session = await sendPrompt(entry, prompt, request.payload, { mcpActivation: diagnostics.mcp_activation, targetDirectory });
             await clearPendingRequest(entry);
             return { diagnostics, pending_request: null, session };
         }
 
         const pending = await storePendingRequest(request, diagnostics);
         const prompt = buildSetupPrompt(pending, diagnostics);
-        const session = await sendPrompt(entry, prompt, request.payload, { ensureMcp: false });
+        const session = await sendPrompt(entry, prompt, request.payload, { ensureMcp: false, mcpActivation: diagnostics.mcp_activation, targetDirectory });
         return { diagnostics, pending_request: pending, session };
     };
 
@@ -1155,13 +1298,15 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             if (!input.sessionID) return;
             const entry = tokenForSession(input.sessionID);
             if (entry) {
+                const targetDirectory = targetDirectoryForEntry(entry);
                 try {
-                    await ensureMcpReady(entry, 'chat-system-transform');
+                    await ensureMcpReady(entry, 'chat-system-transform', targetDirectory);
                 } catch (error) {
                     await debug('Failed to prepare token MCP during system transform.', {
                         error: error instanceof Error ? error.message : String(error),
                         mcp_name: entry.mcpName,
                         session_id: input.sessionID,
+                        target_directory: targetDirectory,
                         token_hash: entry.tokenHash,
                     });
                 }
