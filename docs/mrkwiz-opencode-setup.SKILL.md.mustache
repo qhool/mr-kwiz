@@ -9,7 +9,7 @@ Use this skill only for setup, configuration, connection testing, and troublesho
 
 ## Goal
 
-Connect OpenCode to MrKwiz so future quiz-editing sessions can use token-specific MCP servers.
+Connect OpenCode to MrKwiz so future quiz-editing sessions can use statically configured token-specific MCP servers in the quiz workspace.
 
 The desired end state is:
 
@@ -18,7 +18,7 @@ The desired end state is:
 - `.opencode/mrkwiz.json` stores the raw MCP token locally and is not committed.
 - `mrkwiz_bridge_status` shows the token hash and callback URL.
 - The MrKwiz admin Edit page OpenCode section shows the token as connected.
-- Clicking an OpenCode action in MrKwiz creates or reuses a token-owned session and injects the MCP server name.
+- Clicking an OpenCode action in MrKwiz creates or reuses a token-owned session and injects the statically configured MCP server name.
 - If a pending user request exists, `mrkwiz_do_pending_request` successfully continues it.
 
 ## First Step
@@ -34,15 +34,16 @@ If the prompt contains a diagnostic report, read it first. Fix the failing check
 Use this when the user pasted a bootstrap prompt with a raw MCP token.
 
 1. Load this setup skill.
-2. Check whether `mrkwiz_configure_default_model` and `mrkwiz_configure_mcp` are visible.
+2. Check whether `mrkwiz_configure_default_model` and `mrkwiz_initialize_quiz_workspace` are visible.
 3. Call `mrkwiz_configure_default_model` with the exact provider/model from the current OpenCode session, for example `mrkwiz_configure_default_model({ "model": "provider/model-id" })`.
-4. Call `mrkwiz_configure_mcp` with the raw token, base URL, and label from the bootstrap prompt.
-5. Tell the user to refresh the MrKwiz admin Edit page.
-6. Confirm the token shows as connected.
-7. Tell the user to click an OpenCode action from the MrKwiz admin page to create or reuse the token-owned session.
-8. Confirm the new prompt includes the token-specific MCP server name.
+4. Call `mrkwiz_initialize_quiz_workspace` with the raw token, base URL, quiz ID, quiz title, and `launch: true` from the bootstrap prompt.
+5. If `mrkwiz_initialize_quiz_workspace` is unavailable but `mrkwiz_configure_mcp` exists, call `mrkwiz_configure_mcp` as a fallback and tell the user they need a plugin update before per-quiz static MCP workspace isolation is active.
+6. Tell the user to refresh the MrKwiz admin Edit page.
+7. Confirm the token shows as connected.
+8. Tell the user to click an OpenCode action from the MrKwiz admin page to create or reuse the token-owned session.
+9. Confirm the new prompt includes the token-specific MCP server name from the quiz workspace config.
 
-The raw MCP token should only be stored by the plugin and sent as bearer auth. Do not expose it except when calling `mrkwiz_configure_mcp` during bootstrap.
+The raw MCP token should only be stored in ignored machine-local MrKwiz plugin/workspace files and sent as bearer auth. Do not expose it except when calling `mrkwiz_initialize_quiz_workspace` or fallback `mrkwiz_configure_mcp` during bootstrap.
 
 The token hash is only for identity and status. It is not the raw bearer token.
 
@@ -52,7 +53,8 @@ If plugin tools are missing:
 
 1. Ask the user to confirm `@mrkwiz/opencode-plugin` is in OpenCode config.
 2. Tell the user OpenCode must be restarted after plugin/config changes.
-3. Do not manually configure the hosted MrKwiz MCP server in `opencode.json`; the plugin manages token-specific MCP servers.
+3. Do not manually configure the hosted MrKwiz MCP server in global or app `opencode.json`; the plugin writes static token-specific MCP servers into the generated quiz workspace config.
+4. If the generated quiz workspace config is stale, call `mrkwiz_refresh_quiz_workspace_config`, then tell the user to reopen the quiz workspace so OpenCode reloads static MCP entries.
 
 Recommended config shape:
 
@@ -72,7 +74,7 @@ If `mrkwiz_bridge_status` shows a token as connected but no prompt appears:
 2. If the admin page still shows no OpenCode buttons or a stale callback, call `mrkwiz_reset_callback_urls`.
 3. Tell the user to refresh the MrKwiz admin Edit page again.
 4. Tell the user to click `Open in OpenCode` or a focused edit action for that token.
-5. The plugin callback will connect the token-specific MCP server and send a new prompt.
+5. The plugin callback will use the statically configured token-specific MCP server and send a new prompt.
 6. In the new prompt, load `mrkwiz-quiz-edit` for saved quiz changes.
 
 Do not call `mrkwiz_configure_mcp` again unless the user is adding or replacing a token.
@@ -84,7 +86,8 @@ If the token-specific MCP tools fail:
 1. Call `mrkwiz_bridge_status`.
 2. Confirm the intended token has a connected `mcp_name`.
 3. Use the injected MCP server name for tools, for example `functions.<mcp_name>_get_quiz_context`.
-4. If the error says expired or revoked, guide the user to create a replacement token from the MrKwiz admin Edit page OpenCode section and paste the new bootstrap prompt.
+4. If the expected MCP server is missing after adding or replacing a token, call `mrkwiz_refresh_quiz_workspace_config`, then tell the user to reopen the quiz workspace.
+5. If the error says expired or revoked, guide the user to create a replacement token from the MrKwiz admin Edit page OpenCode section and paste the new bootstrap prompt.
 
 ## After Fixing Diagnostics
 
@@ -107,22 +110,25 @@ Use this checklist after setup changes:
 2. `default_model` is set if the plugin creates MrKwiz sessions.
 3. The intended token appears in `tokens`.
 4. The token has a `callback_url`.
-5. The MrKwiz admin Edit page OpenCode section shows the token connected.
-6. After clicking an admin OpenCode action, the token has an `mcp_name` and session metadata.
-7. The injected MCP server name can call `get_quiz_context`.
+5. `mrkwiz_refresh_quiz_workspace_config` succeeds if the generated quiz workspace config needs to be rewritten.
+6. The MrKwiz admin Edit page OpenCode section shows the token connected.
+7. After clicking an admin OpenCode action, the token has an `mcp_name` and session metadata.
+8. The injected MCP server name can call `get_quiz_context`. If a token was added after the quiz workspace was opened, reopen the quiz workspace so OpenCode reloads the generated static MCP config.
 
 ## Tool Reference
 
 Visible plugin setup/status tools:
 
-- `mrkwiz_bridge_status`: inspect bridge, tokens, callbacks, default model, token MCP names, sessions, and MCP status.
+- `mrkwiz_bridge_status`: inspect bridge, tokens, callbacks, default model, static token MCP names, sessions, and MCP status.
 - `mrkwiz_reset_callback_urls`: force re-register callback URLs for saved tokens when the MrKwiz admin page has stale or missing OpenCode callbacks.
 - `mrkwiz_do_pending_request`: retry or clear the stored pending MrKwiz admin UI request after setup issues are resolved.
+- `mrkwiz_refresh_quiz_workspace_config`: rewrite generated quiz workspace config, static MCP entries, and ignored token files from machine-local plugin config.
 - `mrkwiz_get_system_prompt`: inspect the most recent OpenCode system prompt captured for the current session when debugging prompt or MCP injection.
 - `mrkwiz_get_tool_snapshot`: inspect the most recent OpenCode tool definitions observed by the plugin when debugging MCP tool-map exposure.
 - `mrkwiz_configure_default_model`: save the default OpenCode model for MrKwiz-created sessions.
-- `mrkwiz_configure_mcp`: save a raw MCP token locally and register its callback URL.
+- `mrkwiz_initialize_quiz_workspace`: save a raw MCP token locally and materialize the per-quiz OpenCode workspace with static token MCP entries.
+- `mrkwiz_configure_mcp`: fallback only; save a raw MCP token locally and register its callback URL without per-quiz static MCP workspace isolation.
 
 Hosted MCP tool details:
 
-{{{mcp_tools_sha256_cac20e41871bc542cd23b950b210905eb79a6f39d7feee78f617152a03571da4}}}
+{{{mcp_tools_sha256_6d95b1da135d9176d606707c6239fdc5890c7526ee352cb8e3eb14418c04c3c0}}}

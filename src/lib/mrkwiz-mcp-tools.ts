@@ -134,9 +134,9 @@ export const renderMcpToolsMarkdown = (): string => {
         '',
         'Generated from the hosted MrKwiz MCP tool definitions used by the server.',
         '',
-        `OpenCode exposes these dynamic MCP tools with fully qualified tool names. If the server is named \`${MRKWIZ_MCP_TOOL_NAMESPACE}\`, use names such as \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_get_quiz_context\`, \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_validate_edit\`, and \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_apply_edit\`.`,
+        `OpenCode exposes these MCP tools with fully qualified tool names. If the server is named \`${MRKWIZ_MCP_TOOL_NAMESPACE}\`, use names such as \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_get_quiz_context\`, \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_validate_edit\`, and \`functions.${MRKWIZ_MCP_TOOL_NAMESPACE}_apply_edit\`.`,
         '',
-        'These tools may not appear in OpenCode static helper/tool lists because they are discovered from the connected MCP server at runtime.',
+        'In MrKwiz quiz workspaces, token-specific MCP servers are statically configured in the generated OpenCode workspace config and discovered when that workspace starts.',
     ];
 
     for (const tool of MRKWIZ_MCP_TOOLS) {
