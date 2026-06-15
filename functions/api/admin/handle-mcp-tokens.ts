@@ -30,6 +30,12 @@ const fetchWithTimeout = async (url: string, init?: RequestInit, timeoutMs = 250
     }
 };
 
+const formatFetchError = (error: unknown, url: string): string => {
+    const message = error instanceof Error ? error.message : 'OpenCode bridge is unavailable.';
+    const cause = error instanceof Error && error.cause instanceof Error ? ` (${error.cause.message})` : '';
+    return `${message}${cause} while fetching ${url}`;
+};
+
 const mcpTokenSelect = [
     'id',
     'quiz_id',
@@ -260,7 +266,8 @@ export const handleAdminMcpTokenCallbackStatusGet = async (
         }
 
         try {
-            const response = await fetchWithTimeout(`${token.callback_url.replace(/\/$/, '')}/status`);
+            const callbackUrl = `${token.callback_url.replace(/\/$/, '')}/status`;
+            const response = await fetchWithTimeout(callbackUrl);
             const body = (await response.json().catch(() => ({}))) as Record<string, unknown>;
             if (!response.ok) {
                 return json({ connected: false, error: typeof body.error === 'string' ? body.error : 'OpenCode bridge status check failed.' });
@@ -268,7 +275,8 @@ export const handleAdminMcpTokenCallbackStatusGet = async (
 
             return json(body);
         } catch (error) {
-            return json({ connected: false, error: error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' });
+            const callbackUrl = `${token.callback_url.replace(/\/$/, '')}/status`;
+            return json({ connected: false, error: formatFetchError(error, callbackUrl) });
         }
     } catch (error) {
         return json({ connected: false, error: error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' }, { status: 502 });
@@ -281,6 +289,7 @@ export const handleAdminMcpTokenBridgeActionPost = async (
     tokenId: string | undefined,
     request: Request
 ): Promise<Response> => {
+    let callbackUrl: string | null = null;
     try {
         const result = await getOwnedMcpToken(env, adminKey, tokenId);
         if ('response' in result) return result.response;
@@ -295,7 +304,8 @@ export const handleAdminMcpTokenBridgeActionPost = async (
             return json({ error: 'Invalid OpenCode bridge action.' }, { status: 400 });
         }
 
-        const response = await fetchWithTimeout(`${token.callback_url.replace(/\/$/, '')}/${parsed.data.action}`, {
+        callbackUrl = `${token.callback_url.replace(/\/$/, '')}/${parsed.data.action}`;
+        const response = await fetchWithTimeout(callbackUrl, {
             body: JSON.stringify(parsed.data.payload),
             headers: { 'content-type': 'application/json' },
             method: 'POST',
@@ -307,6 +317,6 @@ export const handleAdminMcpTokenBridgeActionPost = async (
 
         return json(body);
     } catch (error) {
-        return json({ error: error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' }, { status: 502 });
+        return json({ error: callbackUrl ? formatFetchError(error, callbackUrl) : error instanceof Error ? error.message : 'OpenCode bridge is unavailable.' }, { status: 502 });
     }
 };

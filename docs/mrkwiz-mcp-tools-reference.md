@@ -2,9 +2,9 @@
 
 Generated from the hosted MrKwiz MCP tool definitions used by the server.
 
-OpenCode exposes these dynamic MCP tools with fully qualified tool names. If the server is named `mrkwiz`, use names such as `functions.mrkwiz_get_quiz_context`, `functions.mrkwiz_validate_edit`, and `functions.mrkwiz_apply_edit`.
+OpenCode exposes these MCP tools with fully qualified tool names. If the server is named `mrkwiz`, use names such as `functions.mrkwiz_get_quiz_context`, `functions.mrkwiz_validate_edit`, and `functions.mrkwiz_apply_edit`.
 
-These tools may not appear in OpenCode static helper/tool lists because they are discovered from the connected MCP server at runtime.
+In MrKwiz quiz workspaces, token-specific MCP servers are statically configured in the generated OpenCode workspace config and discovered when that workspace starts.
 
 ## functions.mrkwiz_get_quiz_context
 

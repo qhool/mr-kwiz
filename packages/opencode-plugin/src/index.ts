@@ -1,15 +1,17 @@
 import { type Plugin, tool } from '@opencode-ai/plugin';
 import { createHash, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync } from 'node:fs';
-import { readFile, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
+import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt } from './prompt';
-import type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt';
+import { captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt } from './prompt.ts';
+import type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt.ts';
 
-export { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from './prompt';
-export type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt';
+export { buildMcpSystemPrompt, captureSystemPrompt, captureToolDefinition, getCapturedSystemPrompt, getCapturedToolDefinitions, injectMcpSystemPrompt, mcpToolId, mcpToolReference, upsertMcpSystemPrompt } from './prompt.ts';
+export type { CapturedSystemPrompt, CapturedToolDefinition, MrKwizMcpToolName } from './prompt.ts';
 
 type BridgeAction = 'open_quiz' | 'edit_question' | 'edit_theme' | 'edit_archetypes' | 'edit_intro' | 'edit_scoring';
 
@@ -36,8 +38,22 @@ type DiagnosticCheck = {
 
 type DiagnosticReport = {
     checks: DiagnosticCheck[];
+    mcp_activation?: McpActivation;
     ok: boolean;
     token_hash: string;
+};
+
+type McpActivation = {
+    changed: boolean;
+    configured_this_prompt: boolean;
+    instance_state_key: string;
+    mcp_name: string;
+    plugin_directory: string;
+    reason: string;
+    status_after: string | null;
+    status_before: string | null;
+    target_directory: string;
+    tool_prefix: string;
 };
 
 type PendingBridgeRequest = BridgeRequest & {
@@ -57,6 +73,7 @@ type StoredToken = {
     };
     session?: {
         createdAt: string;
+        directory?: string;
         id: string;
         lastAction?: BridgeAction;
         quizId?: string;
@@ -76,6 +93,18 @@ type StoredQuizSession = {
     updatedAt: string;
 };
 
+type StoredQuizWorkspace = {
+    baseUrl: string;
+    createdAt: string;
+    quizId: string;
+    quizTitle: string;
+    tokenHash: string;
+    tokenHashes: string[];
+    updatedAt: string;
+    workspaceDirectory: string;
+    workspaceId: string;
+};
+
 type ModelConfig = {
     modelID: string;
     providerID: string;
@@ -83,8 +112,9 @@ type ModelConfig = {
 
 type MrKwizConfig = {
     defaultModel: ModelConfig | null;
+    quizWorkspaces: Record<string, StoredQuizWorkspace>;
     tokens: Record<string, StoredToken>;
-    version: 2;
+    version: 2 | 3;
 };
 
 type JsonRpcResponse = {
@@ -92,7 +122,13 @@ type JsonRpcResponse = {
     result?: unknown;
 };
 
-const emptyConfig = (): MrKwizConfig => ({ defaultModel: null, tokens: {}, version: 2 });
+type OpenCodeWorkspaceClient = {
+    create(parameters: { branch?: string | null; directory?: string; extra?: unknown | null; id?: string; type?: string }): Promise<{ data?: unknown }>;
+    syncList(parameters?: { directory?: string; workspace?: string }): Promise<{ data?: unknown }>;
+    warp(parameters?: { copyChanges?: boolean; directory?: string; id?: string | null; sessionID?: string; workspace?: string }): Promise<{ data?: unknown }>;
+};
+
+const emptyConfig = (): MrKwizConfig => ({ defaultModel: null, quizWorkspaces: {}, tokens: {}, version: 3 });
 
 const isBridgeAction = (value: unknown): value is BridgeAction => {
     return value === 'open_quiz' || value === 'edit_question' || value === 'edit_theme' || value === 'edit_archetypes' || value === 'edit_intro' || value === 'edit_scoring';
@@ -177,6 +213,201 @@ const json = (body: unknown, init?: ResponseInit): Response => {
 const normalizeBaseUrl = (value?: string): string => (value?.trim() || process.env.MRKWIZ_BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
 
 const delay = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const dataHome = (): string => process.env.XDG_DATA_HOME?.trim() || path.join(homedir(), '.local', 'share');
+
+const mrkwizDataDir = (): string => path.join(dataHome(), 'mrkwiz');
+
+const quizWorkspaceRoot = (): string => path.join(mrkwizDataDir(), 'opencode-workspaces');
+
+const safePathSegment = (value: string): string => value.replace(/[^a-zA-Z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'quiz';
+
+const workspaceIdForQuiz = (quizId: string): string => `mrkwiz_${hashToken(quizId).slice(0, 16)}`;
+
+const workspaceDirectoryForQuiz = (quizId: string): string => path.join(quizWorkspaceRoot(), safePathSegment(quizId));
+
+const sameDirectory = (left: string, right: string): boolean => path.resolve(left) === path.resolve(right);
+
+const uniqueStrings = (values: string[]): string[] => [...new Set(values.filter(Boolean))];
+
+const pluginPath = (): string => fileURLToPath(import.meta.url);
+
+const skillsUrlForBaseUrl = (baseUrl: string): string => `${baseUrl.replace(/\/$/, '')}/.well-known/skills/`;
+
+const isLocalBaseUrl = (value: string): boolean => {
+    try {
+        const hostname = new URL(normalizeBaseUrl(value)).hostname.toLowerCase();
+        return hostname === 'localhost' || hostname === '0.0.0.0' || hostname === '::1' || hostname === '[::1]' || hostname.startsWith('127.');
+    } catch {
+        return false;
+    }
+};
+
+const stripJsoncComments = (value: string): string => {
+    let output = '';
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+        const next = value[index + 1];
+
+        if (inString) {
+            output += character;
+            if (escaped) {
+                escaped = false;
+            } else if (character === '\\') {
+                escaped = true;
+            } else if (character === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (character === '"') {
+            inString = true;
+            output += character;
+            continue;
+        }
+
+        if (character === '/' && next === '/') {
+            while (index < value.length && value[index] !== '\n') index += 1;
+            output += '\n';
+            continue;
+        }
+
+        if (character === '/' && next === '*') {
+            index += 2;
+            while (index < value.length && !(value[index] === '*' && value[index + 1] === '/')) index += 1;
+            index += 1;
+            continue;
+        }
+
+        output += character;
+    }
+
+    return output;
+};
+
+const stripJsonTrailingCommas = (value: string): string => {
+    let output = '';
+    let inString = false;
+    let escaped = false;
+
+    for (let index = 0; index < value.length; index += 1) {
+        const character = value[index];
+
+        if (inString) {
+            output += character;
+            if (escaped) {
+                escaped = false;
+            } else if (character === '\\') {
+                escaped = true;
+            } else if (character === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (character === '"') {
+            inString = true;
+            output += character;
+            continue;
+        }
+
+        if (character === ',') {
+            let nextIndex = index + 1;
+            while (/\s/.test(value[nextIndex] ?? '')) nextIndex += 1;
+            if (value[nextIndex] === '}' || value[nextIndex] === ']') continue;
+        }
+
+        output += character;
+    }
+
+    return output;
+};
+
+const parseJsoncObject = (value: string): Record<string, unknown> | null => {
+    const parsed = JSON.parse(stripJsonTrailingCommas(stripJsoncComments(value))) as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as Record<string, unknown> : null;
+};
+
+const userOpenCodeConfigFiles = (): string[] => [
+    path.join(homedir(), '.config', 'opencode', 'opencode.jsonc'),
+    path.join(homedir(), '.config', 'opencode', 'opencode.json'),
+];
+
+const isMrKwizPluginEntry = (value: string): boolean => {
+    const normalized = value.replace(/\\/g, '/');
+    return value === '@mrkwiz/opencode-plugin'
+        || normalized.endsWith('packages/opencode-plugin/src/index.ts')
+        || normalized.includes('/node_modules/@mrkwiz/opencode-plugin/');
+};
+
+const mrkwizPluginEntryFromConfig = (config: Record<string, unknown>): string | null => {
+    const plugins = config.plugin;
+    if (!Array.isArray(plugins)) return null;
+    const entry = plugins.find((plugin) => typeof plugin === 'string' && isMrKwizPluginEntry(plugin));
+    return typeof entry === 'string' ? entry : null;
+};
+
+const userConfiguredMrKwizPluginEntry = async (): Promise<string | null> => {
+    for (const file of userOpenCodeConfigFiles()) {
+        try {
+            if (!existsSync(file)) continue;
+            const parsed = parseJsoncObject(await readFile(file, 'utf8'));
+            const entry = parsed ? mrkwizPluginEntryFromConfig(parsed) : null;
+            if (entry) return entry;
+        } catch {
+            // Invalid user config should not block workspace creation; fall back below.
+        }
+    }
+
+    return null;
+};
+
+const localCheckoutPluginEntry = (directory: string): string | null => {
+    const candidates = [
+        path.join(directory, 'packages', 'opencode-plugin', 'src', 'index.ts'),
+        pluginPath(),
+    ];
+
+    for (const candidate of candidates) {
+        const normalized = candidate.replace(/\\/g, '/');
+        if (!normalized.includes('/node_modules/') && normalized.endsWith('/packages/opencode-plugin/src/index.ts') && existsSync(candidate)) return candidate;
+    }
+
+    return null;
+};
+
+const parseQuizWorkspaces = (value: unknown): Record<string, StoredQuizWorkspace> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+    const now = new Date().toISOString();
+    const workspaces: Record<string, StoredQuizWorkspace> = {};
+
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+        if (!raw || typeof raw !== 'object' || Array.isArray(raw)) continue;
+        const input = raw as Partial<StoredQuizWorkspace>;
+        const quizId = typeof input.quizId === 'string' && input.quizId ? input.quizId : key;
+        const parsedTokenHashes = Array.isArray(input.tokenHashes) ? input.tokenHashes.filter((item): item is string => typeof item === 'string' && !!item) : [];
+        const tokenHash = typeof input.tokenHash === 'string' && input.tokenHash ? input.tokenHash : (parsedTokenHashes[0] ?? '');
+        const tokenHashes = uniqueStrings([tokenHash, ...parsedTokenHashes]);
+        if (!quizId || !tokenHash) continue;
+        workspaces[quizId] = {
+            baseUrl: normalizeBaseUrl(input.baseUrl),
+            createdAt: typeof input.createdAt === 'string' && input.createdAt ? input.createdAt : now,
+            quizId,
+            quizTitle: typeof input.quizTitle === 'string' && input.quizTitle ? input.quizTitle : 'MrKwiz quiz',
+            tokenHash,
+            tokenHashes,
+            updatedAt: typeof input.updatedAt === 'string' && input.updatedAt ? input.updatedAt : now,
+            workspaceDirectory: typeof input.workspaceDirectory === 'string' && input.workspaceDirectory ? input.workspaceDirectory : workspaceDirectoryForQuiz(quizId),
+            workspaceId: typeof input.workspaceId === 'string' && input.workspaceId ? input.workspaceId : workspaceIdForQuiz(quizId),
+        };
+    }
+
+    return workspaces;
+};
 
 const formatDiagnosticReport = (report: DiagnosticReport): string => JSON.stringify(report, null, 2);
 
@@ -272,9 +503,13 @@ const titleForAction = (payload: BridgePayload): string => {
     }
 };
 
-export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
-    const configFile = path.join(process.cwd(), '.opencode', 'mrkwiz.json');
-    const legacyTokenFile = path.join(process.cwd(), '.opencode', 'mrkwiz-mcp-token');
+export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory, experimental_workspace }) => {
+    const opencodeDir = path.join(mrkwizDataDir(), 'opencode-plugin');
+    const configFile = path.join(opencodeDir, 'mrkwiz.json');
+    const legacyOpencodeDir = path.join(process.cwd(), '.opencode');
+    const legacyConfigFile = path.join(legacyOpencodeDir, 'mrkwiz.json');
+    const legacyTokenFile = path.join(legacyOpencodeDir, 'mrkwiz-mcp-token');
+    const logFile = path.join(mrkwizDataDir(), 'mrkwiz-plugin.log');
     let config = emptyConfig();
     let server: Server | null = null;
     let serverPort = 0;
@@ -284,10 +519,26 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     const registeredCallbackUrls = new Map<string, string>();
     const debugStdout = process.env.MRKWIZ_PLUGIN_DEBUG_STDOUT === '1';
 
+    const redact = (value: unknown): unknown => {
+        if (Array.isArray(value)) return value.map(redact);
+        if (!value || typeof value !== 'object') return typeof value === 'string' && value.startsWith('Bearer ') ? 'Bearer [redacted]' : value;
+        const output: Record<string, unknown> = {};
+        for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+            const lower = key.toLowerCase();
+            output[key] = lower === 'token' || lower === 'authorization' || lower === 'headers'
+                ? '[redacted]'
+                : redact(item);
+        }
+        return output;
+    };
+
     const debug = async (message: string, extra?: Record<string, unknown>) => {
-        if (debugStdout) console.info(`[mrkwiz-opencode-plugin] ${message}`, extra ?? {});
+        const redactedExtra = redact(extra ?? {}) as Record<string, unknown>;
+        if (debugStdout) console.info(`[mrkwiz-opencode-plugin] ${message}`, redactedExtra);
+        mkdirSync(opencodeDir, { recursive: true });
+        await appendFile(logFile, `${JSON.stringify({ at: new Date().toISOString(), extra: redactedExtra, level: 'info', message })}\n`, 'utf8').catch(() => {});
         await client.app
-            .log({ body: { service: 'mrkwiz-opencode-plugin', level: 'info', message, extra } })
+            .log({ body: { service: 'mrkwiz-opencode-plugin', level: 'info', message, extra: redactedExtra } })
             .catch(() => {});
     };
 
@@ -305,6 +556,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 session: entry.session && typeof entry.session.id === 'string'
                     ? {
                           createdAt: entry.session.createdAt || now,
+                          directory: typeof entry.session.directory === 'string' && entry.session.directory ? entry.session.directory : undefined,
                           id: entry.session.id,
                           lastAction: isBridgeAction(entry.session.lastAction) ? entry.session.lastAction : undefined,
                           quizId: entry.session.quizId,
@@ -321,7 +573,9 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         const tokensByHash = (entries: StoredToken[]): Record<string, StoredToken> =>
             Object.fromEntries(entries.map((entry) => [entry.tokenHash, entry]));
 
-        if (!existsSync(configFile)) {
+        const sourceConfigFile = existsSync(configFile) ? configFile : legacyConfigFile;
+
+        if (!existsSync(sourceConfigFile)) {
             if (!existsSync(legacyTokenFile)) return emptyConfig();
             const legacyToken = (await readFile(legacyTokenFile, 'utf8')).trim();
             if (!legacyToken) return emptyConfig();
@@ -337,15 +591,17 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             });
             return {
                 defaultModel: null,
+                quizWorkspaces: {},
                 tokens: { [tokenHash]: entry },
-                version: 2,
+                version: 3,
             };
         }
 
-        const parsed = JSON.parse(await readFile(configFile, 'utf8')) as Partial<MrKwizConfig> & {
+        const parsed = JSON.parse(await readFile(sourceConfigFile, 'utf8')) as Partial<MrKwizConfig> & {
             activeTokenHash?: unknown;
             pendingRequest?: unknown;
             quizSessions?: unknown;
+            quizWorkspaces?: unknown;
             tokens?: unknown;
             version?: unknown;
         };
@@ -381,8 +637,9 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 parsed.defaultModel && typeof parsed.defaultModel.providerID === 'string' && typeof parsed.defaultModel.modelID === 'string'
                     ? { modelID: parsed.defaultModel.modelID, providerID: parsed.defaultModel.providerID }
                     : null,
+            quizWorkspaces: parseQuizWorkspaces(parsed.quizWorkspaces),
             tokens: tokensByHash(parsedTokens),
-            version: 2,
+            version: 3,
         };
     };
 
@@ -393,27 +650,57 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
     const tokenCallbackUrl = (tokenHash: string) => `http://127.0.0.1:${serverPort}/mrkwiz/${nonce}/tokens/${tokenHash}`;
 
-    const getOpenCodeMcpStatus = async (name?: string): Promise<{ name: string | null; status: string | null }> => {
+    const currentQuizWorkspace = (): StoredQuizWorkspace | undefined => Object.values(config.quizWorkspaces).find((workspace) => sameDirectory(workspace.workspaceDirectory, directory));
+
+    const workspaceTokenHashes = (workspace: StoredQuizWorkspace): string[] => uniqueStrings([workspace.tokenHash, ...workspace.tokenHashes]);
+
+    const workspaceHasToken = (workspace: StoredQuizWorkspace, tokenHash: string): boolean => workspaceTokenHashes(workspace).includes(tokenHash);
+
+    const quizWorkspacesForToken = (tokenHash: string): StoredQuizWorkspace[] => Object.values(config.quizWorkspaces).filter((workspace) => workspaceHasToken(workspace, tokenHash));
+
+    const tokenEntriesForWorkspace = (workspace: StoredQuizWorkspace): StoredToken[] => {
+        const hashes = new Set(workspaceTokenHashes(workspace));
+        return tokenEntries(config).filter((entry) => hashes.has(entry.tokenHash) || entry.quiz?.id === workspace.quizId);
+    };
+
+    const ownsToken = (tokenHash: string): boolean => {
+        const workspaces = quizWorkspacesForToken(tokenHash);
+        if (workspaces.length === 0) return true;
+        const current = currentQuizWorkspace();
+        return !!current && workspaceHasToken(current, tokenHash);
+    };
+
+    const ownedTokenEntries = (): StoredToken[] => tokenEntries(config).filter((entry) => ownsToken(entry.tokenHash));
+
+    const targetDirectoryForEntry = (entry: StoredToken): string => {
+        const ownedWorkspace = currentQuizWorkspace();
+        if (ownedWorkspace && workspaceHasToken(ownedWorkspace, entry.tokenHash)) return ownedWorkspace.workspaceDirectory;
+        return entry.session?.directory || quizWorkspacesForToken(entry.tokenHash)[0]?.workspaceDirectory || directory;
+    };
+
+    const getOpenCodeMcpStatus = async (name?: string, targetDirectory = directory): Promise<{ name: string | null; status: string | null }> => {
         try {
-            const result = await client.mcp.status({ query: { directory } });
+            const result = await client.mcp.status({ query: { directory: targetDirectory } });
             const servers = (result.data as Record<string, { status?: string }> | undefined) ?? {};
             const mcpName = name ?? ['mrkwiz', 'mrkwiz-debug'].find((candidate) => typeof servers[candidate]?.status === 'string') ?? null;
             return { name: mcpName, status: mcpName ? (servers[mcpName]?.status ?? null) : null };
         } catch (error) {
-            await debug('Failed to read OpenCode MCP status.', { error: error instanceof Error ? error.message : String(error) });
+            await debug('Failed to read OpenCode MCP status.', { error: error instanceof Error ? error.message : String(error), target_directory: targetDirectory });
             return { name: null, status: null };
         }
     };
 
     const publicTokenStatus = async (entry: StoredToken) => {
-        const mcp = await getOpenCodeMcpStatus(entry.mcpName);
+        const targetDirectory = targetDirectoryForEntry(entry);
+        const mcp = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
         return {
             base_url: entry.baseUrl,
             callback_url: tokenCallbackUrl(entry.tokenHash),
-            connected: mcp.status === 'connected',
+            connected: ownsToken(entry.tokenHash) && mcp.status === 'connected',
             label: entry.label ?? null,
             mcp_name: entry.mcpName,
             mcp_status: mcp.status,
+            owned_by_this_instance: ownsToken(entry.tokenHash),
             pending_request: entry.pendingRequest
                 ? {
                       action: entry.pendingRequest.action,
@@ -423,13 +710,23 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 : null,
             session: entry.session
                 ? {
+                      directory: entry.session.directory ?? null,
                       id: entry.session.id,
                       quiz_id: entry.session.quizId ?? entry.quiz?.id ?? null,
                       quiz_title: entry.session.quizTitle ?? entry.quiz?.title ?? null,
                       updated_at: entry.session.updatedAt,
                   }
                 : null,
+            target_directory: targetDirectory,
             token_hash: entry.tokenHash,
+            workspaces: quizWorkspacesForToken(entry.tokenHash).map((workspace) => ({
+                current_instance: sameDirectory(workspace.workspaceDirectory, directory),
+                quiz_id: workspace.quizId,
+                quiz_title: workspace.quizTitle,
+                token_hashes: workspaceTokenHashes(workspace),
+                workspace_directory: workspace.workspaceDirectory,
+                workspace_id: workspace.workspaceId,
+            })),
         };
     };
 
@@ -442,6 +739,24 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             cwd: process.cwd(),
             default_model: formatModel(config.defaultModel),
             directory,
+            log_file: logFile,
+            quiz_workspace: currentQuizWorkspace()
+                ? {
+                      quiz_id: currentQuizWorkspace()!.quizId,
+                      quiz_title: currentQuizWorkspace()!.quizTitle,
+                      workspace_directory: currentQuizWorkspace()!.workspaceDirectory,
+                      workspace_id: currentQuizWorkspace()!.workspaceId,
+                  }
+                : null,
+            quiz_workspaces: Object.values(config.quizWorkspaces).map((workspace) => ({
+                current_instance: sameDirectory(workspace.workspaceDirectory, directory),
+                quiz_id: workspace.quizId,
+                quiz_title: workspace.quizTitle,
+                token_hash: workspace.tokenHash,
+                token_hashes: workspaceTokenHashes(workspace),
+                workspace_directory: workspace.workspaceDirectory,
+                workspace_id: workspace.workspaceId,
+            })),
             running: true,
             supported_actions: ['open_quiz', 'edit_question', 'edit_theme', 'edit_archetypes', 'edit_intro', 'edit_scoring'],
             tokens: mcpStatuses,
@@ -530,6 +845,15 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     };
 
     const ensureCallbackRegistered = async (entry: StoredToken, reason: string) => {
+        if (!ownsToken(entry.tokenHash)) {
+            await debug('Skipping callback registration for token not owned by this plugin instance.', {
+                current_directory: directory,
+                reason,
+                token_hash: entry.tokenHash,
+                workspace_directories: quizWorkspacesForToken(entry.tokenHash).map((workspace) => workspace.workspaceDirectory),
+            });
+            return;
+        }
         const expectedUrl = tokenCallbackUrl(entry.tokenHash);
         if (registeredCallbackUrls.get(entry.tokenHash) === expectedUrl) return;
         const existing = callbackRegistrations.get(entry.tokenHash);
@@ -565,7 +889,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     };
 
     const refreshCallbackRegistrations = (reason: string) => {
-        for (const entry of tokenEntries(config)) {
+        for (const entry of ownedTokenEntries()) {
             scheduleCallbackRegistration(entry, reason);
         }
     };
@@ -584,7 +908,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         }
 
         if (args.wait) {
-            await Promise.all(targetTokens.map((entry) => ensureCallbackRegistered(entry, 'manual-reset')));
+            await Promise.all(targetTokens.filter((entry) => ownsToken(entry.tokenHash)).map((entry) => ensureCallbackRegistered(entry, 'manual-reset')));
         } else {
             for (const entry of targetTokens) {
                 scheduleCallbackRegistration(entry, 'manual-reset');
@@ -601,7 +925,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         };
     };
 
-    const upsertToken = async (input: { baseUrl?: string; label?: string; token: string }) => {
+    const upsertToken = async (input: { baseUrl?: string; label?: string; token: string }, options: { scheduleCallback?: boolean } = {}) => {
         const token = input.token.trim();
         if (!token) throw new Error('MCP token is required.');
         const tokenHash = hashToken(token);
@@ -620,47 +944,320 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         };
         config.tokens = { ...config.tokens, [tokenHash]: next };
         await saveConfig();
-        scheduleCallbackRegistration(next, 'configure-token');
+        if (options.scheduleCallback !== false) scheduleCallbackRegistration(next, 'configure-token');
         return next;
     };
 
-    const ensureMcpReady = async (entry: StoredToken, reason: string) => {
-        const current = await getOpenCodeMcpStatus(entry.mcpName);
-        if (current.status === 'connected') return { changed: false, name: entry.mcpName, status: current.status };
+    const materializeQuizWorkspace = async (workspace: StoredQuizWorkspace) => {
+        const workspaceOpencodeDir = path.join(workspace.workspaceDirectory, '.opencode');
+        const tokenDirectory = path.join(workspaceOpencodeDir, 'mrkwiz-tokens');
+        const pluginEntry = await userConfiguredMrKwizPluginEntry()
+            ?? (isLocalBaseUrl(workspace.baseUrl) ? localCheckoutPluginEntry(directory) : null)
+            ?? pluginPath();
+        mkdirSync(workspaceOpencodeDir, { recursive: true });
+        mkdirSync(tokenDirectory, { recursive: true });
+
+        const workspaceTokens = tokenEntriesForWorkspace(workspace);
+        for (const entry of workspaceTokens) {
+            await writeFile(path.join(tokenDirectory, entry.tokenHash), `${entry.token}\n`, 'utf8');
+        }
+
+        const mcp = Object.fromEntries(workspaceTokens.map((entry) => [
+            entry.mcpName,
+            {
+                enabled: true,
+                headers: { Authorization: `Bearer {file:${path.join(tokenDirectory, entry.tokenHash)}}` },
+                type: 'remote',
+                url: `${entry.baseUrl}/mcp`,
+            },
+        ]));
+
+        await writeFile(
+            path.join(workspace.workspaceDirectory, 'opencode.json'),
+            `${JSON.stringify(
+                {
+                    $schema: 'https://opencode.ai/config.json',
+                    mcp,
+                    plugin: [pluginEntry],
+                    skills: { urls: [skillsUrlForBaseUrl(workspace.baseUrl)] },
+                },
+                null,
+                2
+            )}\n`,
+            'utf8'
+        );
+
+        await writeFile(
+            path.join(workspaceOpencodeDir, 'mrkwiz.json'),
+            `${JSON.stringify(
+                {
+                    centralConfigFile: configFile,
+                    quizWorkspace: {
+                        baseUrl: workspace.baseUrl,
+                        quizId: workspace.quizId,
+                        quizTitle: workspace.quizTitle,
+                        tokenHash: workspace.tokenHash,
+                        tokenHashes: workspaceTokenHashes(workspace),
+                        workspaceId: workspace.workspaceId,
+                    },
+                    version: 3,
+                },
+                null,
+                2
+            )}\n`,
+            'utf8'
+        );
+
+        await debug('Materialized MrKwiz quiz workspace.', {
+            quiz_id: workspace.quizId,
+            token_hash: workspace.tokenHash,
+            token_hashes: workspaceTokenHashes(workspace),
+            mcp_names: workspaceTokens.map((entry) => entry.mcpName),
+            plugin: pluginEntry,
+            workspace_directory: workspace.workspaceDirectory,
+            workspace_id: workspace.workspaceId,
+        });
+
+        await writeFile(
+            path.join(workspaceOpencodeDir, '.gitignore'),
+            ['node_modules', 'package.json', 'package-lock.json', 'bun.lock', 'mrkwiz.json', 'mrkwiz-mcp-token', 'mrkwiz-tokens', '.gitignore', ''].join('\n'),
+            'utf8'
+        );
+
+        return { pluginEntry };
+    };
+
+    const workspaceForInfo = (info: { extra?: unknown | null; id?: string }): StoredQuizWorkspace | undefined => {
+        const extra = info.extra && typeof info.extra === 'object' && !Array.isArray(info.extra) ? info.extra as { quizId?: unknown } : null;
+        const quizId = typeof extra?.quizId === 'string' && extra.quizId ? extra.quizId : undefined;
+        return Object.values(config.quizWorkspaces).find((workspace) => workspace.workspaceId === info.id || workspace.quizId === quizId);
+    };
+
+    experimental_workspace.register('mrkwiz-quiz', {
+        name: 'MrKwiz quiz',
+        description: 'Machine-local MrKwiz quiz workspaces managed by the MrKwiz OpenCode plugin.',
+        async configure(info) {
+            const workspace = workspaceForInfo(info);
+            if (!workspace) return info;
+            return {
+                ...info,
+                branch: null,
+                directory: workspace.workspaceDirectory,
+                name: workspace.quizTitle,
+            };
+        },
+        async create(info) {
+            const workspace = workspaceForInfo(info);
+            if (!workspace) throw new Error(`Unknown MrKwiz quiz workspace: ${info.id}`);
+            await materializeQuizWorkspace(workspace);
+        },
+        async remove(info) {
+            await debug('OpenCode requested MrKwiz quiz workspace removal.', { workspace_id: info.id });
+        },
+        async target(info) {
+            const workspace = workspaceForInfo(info);
+            if (!workspace) throw new Error(`Unknown MrKwiz quiz workspace: ${info.id}`);
+            await materializeQuizWorkspace(workspace);
+            return { type: 'local', directory: workspace.workspaceDirectory };
+        },
+    });
+
+    const initializeQuizWorkspace = async (
+        args: { base_url?: string; label?: string; launch?: boolean; quiz_id: string; quiz_title?: string; token: string },
+        sessionID?: string
+    ) => {
+        const workspaceClient = (client as unknown as { experimental?: { workspace?: OpenCodeWorkspaceClient } }).experimental?.workspace;
+        const quizId = args.quiz_id.trim();
+        if (!quizId) throw new Error('quiz_id is required.');
+        const quizTitle = args.quiz_title?.trim() || args.label?.trim() || 'MrKwiz quiz';
+        const entry = await upsertToken({ baseUrl: args.base_url, label: args.label ?? quizTitle, token: args.token }, { scheduleCallback: false });
+        const now = new Date().toISOString();
+        const existingWorkspace = config.quizWorkspaces[quizId];
+        const tokenHashes = uniqueStrings([...(existingWorkspace ? workspaceTokenHashes(existingWorkspace) : []), entry.tokenHash]);
+        const workspace: StoredQuizWorkspace = {
+            baseUrl: entry.baseUrl,
+            createdAt: existingWorkspace?.createdAt ?? now,
+            quizId,
+            quizTitle,
+            tokenHash: existingWorkspace?.tokenHash ?? entry.tokenHash,
+            tokenHashes,
+            updatedAt: now,
+            workspaceDirectory: existingWorkspace?.workspaceDirectory ?? workspaceDirectoryForQuiz(quizId),
+            workspaceId: existingWorkspace?.workspaceId ?? workspaceIdForQuiz(quizId),
+        };
+
+        config.quizWorkspaces = { ...config.quizWorkspaces, [quizId]: workspace };
+        entry.quiz = { id: quizId, title: quizTitle };
+        entry.updatedAt = now;
+        config.tokens[entry.tokenHash] = entry;
+        await saveConfig();
+        const materialized = await materializeQuizWorkspace(workspace);
+
+        const workspaceCalls: Record<string, unknown> = {};
+        if (!workspaceClient) {
+            workspaceCalls.unavailable = 'OpenCode experimental workspace client is not available in this runtime.';
+        } else {
+            try {
+                const syncResult = await workspaceClient.syncList({ directory });
+                workspaceCalls.sync_list = syncResult.data ?? true;
+            } catch (error) {
+                workspaceCalls.sync_list_error = error instanceof Error ? error.message : String(error);
+                await debug('Failed to sync OpenCode workspace list.', { error: workspaceCalls.sync_list_error, workspace_id: workspace.workspaceId });
+            }
+
+            try {
+                const createResult = await workspaceClient.create({
+                    branch: null,
+                    directory,
+                    extra: { quizId: workspace.quizId, tokenHash: entry.tokenHash, tokenHashes: workspaceTokenHashes(workspace) },
+                    id: workspace.workspaceId,
+                    type: 'mrkwiz-quiz',
+                });
+                workspaceCalls.create = createResult.data ?? true;
+            } catch (error) {
+                workspaceCalls.create_error = error instanceof Error ? error.message : String(error);
+                await debug('Failed to create OpenCode workspace.', { error: workspaceCalls.create_error, workspace_id: workspace.workspaceId });
+            }
+
+            if (args.launch !== false && sessionID) {
+                try {
+                    const warpResult = await workspaceClient.warp({ copyChanges: false, id: workspace.workspaceId, sessionID });
+                    workspaceCalls.warp = warpResult.data ?? true;
+                } catch (error) {
+                    workspaceCalls.warp_error = error instanceof Error ? error.message : String(error);
+                    await debug('Failed to warp session into MrKwiz quiz workspace.', { error: workspaceCalls.warp_error, session_id: sessionID, workspace_id: workspace.workspaceId });
+                }
+            }
+        }
+
+        return {
+            ok: true,
+            callback_registration: sameDirectory(workspace.workspaceDirectory, directory)
+                ? 'owned_by_current_instance'
+                : 'will_register_when_workspace_plugin_instance_starts',
+            config_file: configFile,
+            mcp_name: entry.mcpName,
+            mcp_names: tokenEntriesForWorkspace(workspace).map((tokenEntry) => tokenEntry.mcpName),
+            note: 'Quiz workspace initialized with static MCP server entries. Raw MCP tokens are stored only in machine-local ignored plugin/workspace files, not in git-tracked files.',
+            quiz_id: workspace.quizId,
+            quiz_title: workspace.quizTitle,
+            token_hash: entry.tokenHash,
+            token_hashes: workspaceTokenHashes(workspace),
+            workspace_calls: workspaceCalls,
+            workspace_directory: workspace.workspaceDirectory,
+            workspace_id: workspace.workspaceId,
+            workspace_plugin: materialized.pluginEntry,
+        };
+    };
+
+    const ensureMcpReady = async (entry: StoredToken, reason: string, targetDirectory: string): Promise<McpActivation> => {
+        const current = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
+        if (current.status === 'connected') {
+            return {
+                changed: false,
+                configured_this_prompt: false,
+                instance_state_key: targetDirectory,
+                mcp_name: entry.mcpName,
+                plugin_directory: directory,
+                reason,
+                status_after: current.status,
+                status_before: current.status,
+                target_directory: targetDirectory,
+                tool_prefix: `${entry.mcpName}_`,
+            };
+        }
 
         await client.tui.showToast({
             body: {
-                message: `Setting up MrKwiz MCP ${entry.mcpName}...`,
+                message: `Connecting static MrKwiz MCP ${entry.mcpName}...`,
                 variant: 'info',
             },
         }).catch(() => {});
-        const addResult = await client.mcp.add({
-            body: {
-                config: {
-                    enabled: true,
-                    headers: { Authorization: `Bearer ${entry.token}` },
-                    oauth: false,
-                    type: 'remote',
-                    url: `${entry.baseUrl}/mcp`,
-                },
-                name: entry.mcpName,
-            },
-            query: { directory },
-        });
-        const connectResult = await client.mcp.connect({ path: { name: entry.mcpName }, query: { directory } });
+        let connectResult: { data?: unknown } | null = null;
+        try {
+            connectResult = await client.mcp.connect({ path: { name: entry.mcpName }, query: { directory: targetDirectory } });
+        } catch (error) {
+            throw new Error(`Static MrKwiz MCP server ${entry.mcpName} is not available in ${targetDirectory}. Reopen the quiz workspace so OpenCode reloads its generated opencode.json. ${error instanceof Error ? error.message : String(error)}`);
+        }
         await client.tui.showToast({
             body: {
                 message: `MrKwiz MCP ready: ${entry.mcpName}`,
                 variant: 'success',
             },
         }).catch(() => {});
-        await debug('MCP token server ready.', { add_result: addResult.data, connect_result: connectResult.data, directory, mcp_name: entry.mcpName, previous_status: current, reason, token_hash: entry.tokenHash });
-        return { addResult: addResult.data, changed: true, connectResult: connectResult.data, name: entry.mcpName };
+        const after = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
+        if (after.status !== 'connected') {
+            throw new Error(`Static MrKwiz MCP server ${entry.mcpName} did not connect in ${targetDirectory}. Reopen the quiz workspace so OpenCode reloads its generated opencode.json.`);
+        }
+        const activation: McpActivation = {
+            changed: current.status !== after.status,
+            configured_this_prompt: false,
+            instance_state_key: targetDirectory,
+            mcp_name: entry.mcpName,
+            plugin_directory: directory,
+            reason,
+            status_after: after.status,
+            status_before: current.status,
+            target_directory: targetDirectory,
+            tool_prefix: `${entry.mcpName}_`,
+        };
+        await debug('Static MCP token server ready.', { activation, connect_result: connectResult.data, previous_status: current, token_hash: entry.tokenHash });
+        return activation;
     };
 
-    const runDiagnostics = async (entry: StoredToken, request: BridgeRequest): Promise<DiagnosticReport> => {
+    const fallbackMcpActivation = (entry: StoredToken, reason: string, targetDirectory: string): McpActivation => ({
+        changed: false,
+        configured_this_prompt: false,
+        instance_state_key: targetDirectory,
+        mcp_name: entry.mcpName,
+        plugin_directory: directory,
+        reason,
+        status_after: null,
+        status_before: null,
+        target_directory: targetDirectory,
+        tool_prefix: `${entry.mcpName}_`,
+    });
+
+    const mcpStatusMessage = (sessionId: string, activation: McpActivation): string => [
+        'MrKwiz plugin status',
+        '',
+        `MCP server: ${activation.mcp_name}`,
+        `Injected prompt session: ${sessionId}`,
+        `Plugin startup directory: ${activation.plugin_directory}`,
+        `Prompt target directory: ${activation.target_directory}`,
+        `OpenCode MCP InstanceState key: ${activation.instance_state_key}`,
+        `MCP status before setup: ${activation.status_before ?? 'not reported'}`,
+        `MCP status after setup: ${activation.status_after ?? 'not reported'}`,
+        `Configured MCP dynamically during this prompt: ${activation.configured_this_prompt ? 'yes' : 'no'}`,
+        `Expected OpenCode tool prefix: ${activation.tool_prefix}`,
+        `Reason: ${activation.reason}`,
+    ].join('\n');
+
+    const appendMcpStatusPrompt = async (sessionId: string, activation: McpActivation) => {
+        const message = mcpStatusMessage(sessionId, activation);
+        try {
+            await client.session.prompt({
+                body: {
+                    noReply: true,
+                    parts: [{ text: message, type: 'text' }],
+                },
+                path: { id: sessionId },
+                query: { directory: activation.target_directory },
+            });
+            await debug('Appended MrKwiz MCP no-reply status prompt.', { activation, session_id: sessionId });
+        } catch (error) {
+            await debug('Failed to append MrKwiz MCP no-reply status prompt.', {
+                activation,
+                error: error instanceof Error ? error.message : String(error),
+                session_id: sessionId,
+            });
+        }
+    };
+
+    const runDiagnostics = async (entry: StoredToken, request: BridgeRequest, targetDirectory: string): Promise<DiagnosticReport> => {
         const checks: DiagnosticCheck[] = [];
         const addCheck = (check: DiagnosticCheck) => checks.push(check);
+        let mcpActivation: McpActivation | undefined;
 
         addCheck({
             details: { action: request.action, base_url: entry.baseUrl, callback_url: tokenCallbackUrl(entry.tokenHash) },
@@ -670,30 +1267,31 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
 
         let activated = false;
         try {
-            const activation = await ensureMcpReady(entry, request.action);
+            const activation = await ensureMcpReady(entry, request.action, targetDirectory);
+            mcpActivation = activation;
             activated = true;
             addCheck({
-                details: { changed: activation.changed, mcp_name: entry.mcpName },
-                message: 'OpenCode MCP server setup succeeded.',
+                details: { changed: activation.changed, instance_state_key: activation.instance_state_key, mcp_name: entry.mcpName, target_directory: targetDirectory },
+                message: 'Static OpenCode MCP server is connected.',
                 ok: true,
             });
         } catch (error) {
             await client.tui.showToast({
                 body: {
-                    message: `MrKwiz MCP setup failed for ${entry.label ?? entry.tokenHash}.`,
+                    message: `MrKwiz static MCP connection failed for ${entry.label ?? entry.tokenHash}.`,
                     variant: 'error',
                 },
             }).catch(() => {});
             addCheck({
                 details: { error: error instanceof Error ? error.message : String(error) },
-                message: 'OpenCode MCP server setup failed.',
+                message: 'Static OpenCode MCP server connection failed.',
                 ok: false,
             });
         }
 
-        const mcpStatus = await getOpenCodeMcpStatus(entry.mcpName);
+        const mcpStatus = await getOpenCodeMcpStatus(entry.mcpName, targetDirectory);
         addCheck({
-            details: mcpStatus,
+            details: { ...mcpStatus, instance_state_key: targetDirectory, target_directory: targetDirectory },
             message: mcpStatus.status ? 'OpenCode reports this MrKwiz MCP server.' : 'OpenCode does not report this MrKwiz MCP server.',
             ok: !!mcpStatus.status,
         });
@@ -715,56 +1313,97 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             }
         }
 
-        return { checks, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
+        return { checks, mcp_activation: mcpActivation, ok: checks.every((check) => check.ok), token_hash: entry.tokenHash };
     };
 
-    const promptSession = async (sessionId: string, prompt: string, model: ModelConfig | undefined) => {
+    const promptSession = async (entry: StoredToken, sessionId: string, prompt: string, model: ModelConfig | undefined, activation: McpActivation) => {
+        await appendMcpStatusPrompt(sessionId, activation);
         await client.session.promptAsync({
             body: {
                 model,
                 parts: [{ text: prompt, type: 'text' }],
             },
             path: { id: sessionId },
-            query: { directory },
+            query: { directory: activation.target_directory },
         });
+        await debug('Sent MrKwiz injected prompt.', { activation, mcp_name: entry.mcpName, session_id: sessionId, token_hash: entry.tokenHash });
     };
 
-    const createSessionForPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, model: ModelConfig | undefined) => {
+    const createSessionForPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, model: ModelConfig | undefined, activation: McpActivation) => {
         const session = await client.session.create({
             body: { title: titleForAction(payload) },
-            query: { directory },
+            query: { directory: activation.target_directory },
         });
         if (!session.data?.id) {
             await debug('OpenCode session.create did not return a session id.', { response: session.response, data: session.data });
             throw new Error('OpenCode did not return a session id.');
         }
 
-        await promptSession(session.data.id, prompt, model);
+        const now = new Date().toISOString();
+        const quizId = payload.quiz_id?.trim();
+        entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
+        entry.session = {
+            createdAt: now,
+            directory: activation.target_directory,
+            id: session.data.id,
+            lastAction: payload.action,
+            quizId: quizId ?? entry.quiz?.id,
+            quizTitle: payload.quiz_title ?? entry.quiz?.title,
+            updatedAt: now,
+        };
+        entry.updatedAt = now;
+        config.tokens[entry.tokenHash] = entry;
+        await saveConfig();
 
-        await debug('Created MrKwiz OpenCode session.', { mcp_name: entry.mcpName, session_id: session.data.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+        await promptSession(entry, session.data.id, prompt, model, activation);
+
+        await debug('Created MrKwiz OpenCode session.', { mcp_name: entry.mcpName, session_id: session.data.id, target_directory: activation.target_directory, title: titleForAction(payload), token_hash: entry.tokenHash });
         return session.data;
     };
 
     const tokenForSession = (sessionId: string): StoredToken | undefined => tokenEntries(config).find((entry) => entry.session?.id === sessionId);
 
-    const storedSessionIsVisible = async (entry: StoredToken): Promise<boolean> => {
-        if (!entry.session?.id) return false;
-        const sessions = await client.session.list({ query: { directory } });
-        return !!sessions.data?.some((session) => session.id === entry.session!.id);
+    const sessionIsArchived = (session: unknown): boolean => {
+        if (!session || typeof session !== 'object' || Array.isArray(session)) return false;
+        const input = session as { archived?: unknown; archivedAt?: unknown; status?: unknown; time?: { archived?: unknown } };
+        const isSet = (value: unknown): boolean => value !== undefined && value !== null && value !== false && value !== 0 && value !== '';
+        return isSet(input.archived) || isSet(input.archivedAt) || input.status === 'archived' || isSet(input.time?.archived);
     };
 
-    const sendPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, options: { ensureMcp?: boolean } = {}) => {
-        if (options.ensureMcp !== false) await ensureMcpReady(entry, payload.action ?? 'open_quiz');
+    const storedSessionIsVisible = async (entry: StoredToken, targetDirectory: string): Promise<boolean> => {
+        if (!entry.session?.id) return false;
+        const sessions = await client.session.list({ query: { directory: targetDirectory } });
+        const visibleSession = sessions.data?.find((session) => session.id === entry.session!.id);
+        if (!visibleSession) return false;
+        if (sessionIsArchived(visibleSession)) {
+            await debug('Stored MrKwiz OpenCode session is archived; creating replacement.', {
+                mcp_name: entry.mcpName,
+                session_id: entry.session.id,
+                target_directory: targetDirectory,
+                token_hash: entry.tokenHash,
+            });
+            return false;
+        }
+        return true;
+    };
+
+    const sendPrompt = async (entry: StoredToken, prompt: string, payload: BridgePayload, options: { ensureMcp?: boolean; mcpActivation?: McpActivation; targetDirectory?: string } = {}) => {
+        const targetDirectory = options.targetDirectory ?? targetDirectoryForEntry(entry);
+        const activation = options.mcpActivation
+            ?? (options.ensureMcp === false
+                ? fallbackMcpActivation(entry, payload.action ?? 'open_quiz', targetDirectory)
+                : await ensureMcpReady(entry, payload.action ?? 'open_quiz', targetDirectory));
         const model = config.defaultModel ? { modelID: config.defaultModel.modelID, providerID: config.defaultModel.providerID } : undefined;
         const quizId = payload.quiz_id?.trim();
 
-        if (entry.session && await storedSessionIsVisible(entry)) {
+        if (entry.session && await storedSessionIsVisible(entry, targetDirectory)) {
             try {
-                await promptSession(entry.session.id, prompt, model);
+                await promptSession(entry, entry.session.id, prompt, model, activation);
                 const now = new Date().toISOString();
                 entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
                 entry.session = {
                     ...entry.session,
+                    directory: targetDirectory,
                     lastAction: payload.action,
                     quizId: quizId ?? entry.session.quizId,
                     quizTitle: payload.quiz_title ?? entry.session.quizTitle,
@@ -773,7 +1412,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                 entry.updatedAt = now;
                 config.tokens[entry.tokenHash] = entry;
                 await saveConfig();
-                await debug('Reused MrKwiz OpenCode session.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: entry.session.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+                await debug('Reused MrKwiz OpenCode session.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: entry.session.id, target_directory: targetDirectory, title: titleForAction(payload), token_hash: entry.tokenHash });
                 return { id: entry.session.id };
             } catch (error) {
                 await debug('Stored MrKwiz OpenCode session could not be reused; creating replacement.', {
@@ -781,6 +1420,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     mcp_name: entry.mcpName,
                     quiz_id: quizId,
                     session_id: entry.session.id,
+                    target_directory: targetDirectory,
                     token_hash: entry.tokenHash,
                 });
                 delete entry.session;
@@ -789,11 +1429,12 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             }
         }
 
-        const session = await createSessionForPrompt(entry, prompt, payload, model);
+        const session = await createSessionForPrompt(entry, prompt, payload, model, activation);
         const now = new Date().toISOString();
         entry.quiz = { id: quizId ?? entry.quiz?.id, title: payload.quiz_title ?? entry.quiz?.title };
         entry.session = {
             createdAt: now,
+            directory: targetDirectory,
             id: session.id,
             lastAction: payload.action,
             quizId: quizId ?? entry.quiz?.id,
@@ -803,7 +1444,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
         entry.updatedAt = now;
         config.tokens[entry.tokenHash] = entry;
         await saveConfig();
-        await debug('Tracked MrKwiz OpenCode session for token.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: session.id, title: titleForAction(payload), token_hash: entry.tokenHash });
+        await debug('Tracked MrKwiz OpenCode session for token.', { mcp_name: entry.mcpName, quiz_id: quizId, session_id: session.id, target_directory: targetDirectory, title: titleForAction(payload), token_hash: entry.tokenHash });
         return session;
     };
 
@@ -834,25 +1475,29 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
     const handleBridgeRequest = async (request: BridgeRequest) => {
         const entry = config.tokens[request.tokenHash];
         if (!entry) throw new Error(`Unknown MrKwiz MCP token hash: ${request.tokenHash}`);
+        if (!ownsToken(entry.tokenHash)) {
+            throw new Error('This MrKwiz token is owned by a quiz workspace plugin instance. Open or refresh the quiz workspace so it can register the active callback URL.');
+        }
+        const targetDirectory = targetDirectoryForEntry(entry);
 
         scheduleCallbackRegistration(entry, request.action);
-        const diagnostics = await runDiagnostics(entry, request);
+        const diagnostics = await runDiagnostics(entry, request, targetDirectory);
 
         if (diagnostics.ok) {
             const prompt = buildDesignPrompt(request, diagnostics);
-            const session = await sendPrompt(entry, prompt, request.payload);
+            const session = await sendPrompt(entry, prompt, request.payload, { mcpActivation: diagnostics.mcp_activation, targetDirectory });
             await clearPendingRequest(entry);
             return { diagnostics, pending_request: null, session };
         }
 
         const pending = await storePendingRequest(request, diagnostics);
         const prompt = buildSetupPrompt(pending, diagnostics);
-        const session = await sendPrompt(entry, prompt, request.payload, { ensureMcp: false });
+        const session = await sendPrompt(entry, prompt, request.payload, { ensureMcp: false, mcpActivation: diagnostics.mcp_activation, targetDirectory });
         return { diagnostics, pending_request: pending, session };
     };
 
     const doPendingRequest = async (args: { clear?: boolean }) => {
-        const pendingEntry = tokenEntries(config).find((entry) => entry.pendingRequest);
+        const pendingEntry = ownedTokenEntries().find((entry) => entry.pendingRequest);
         const pending = pendingEntry?.pendingRequest ?? null;
         if (!pending) {
             return { ok: false, note: 'No pending MrKwiz user request is stored.' };
@@ -1018,7 +1663,7 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             callback_url: tokenCallbackUrl(entry.tokenHash),
             config_file: configFile,
             mcp_name: entry.mcpName,
-            note: 'Token saved locally. Callback registration is running in the background; MrKwiz will connect this token-specific MCP server when a bridge action uses this token.',
+            note: 'Token saved locally. Callback registration is running in the background. Use mrkwiz_initialize_quiz_workspace for per-quiz static MCP workspace configuration.',
             token_hash: entry.tokenHash,
         };
     };
@@ -1035,6 +1680,57 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             model_id: model.modelID,
             note: 'MrKwiz plugin will use this model for new sessions created from MrKwiz admin UI actions.',
             provider_id: model.providerID,
+        };
+    };
+
+    const refreshQuizWorkspaceConfig = async (args: { all?: boolean; quiz_id?: string }) => {
+        config = await loadConfig();
+        const now = new Date().toISOString();
+        const requestedQuizId = args.quiz_id?.trim();
+        const currentWorkspace = currentQuizWorkspace();
+
+        const workspaces = requestedQuizId
+            ? [config.quizWorkspaces[requestedQuizId]].filter((workspace): workspace is StoredQuizWorkspace => !!workspace)
+            : args.all
+              ? Object.values(config.quizWorkspaces)
+              : currentWorkspace
+                ? [currentWorkspace]
+                : Object.values(config.quizWorkspaces).length === 1
+                  ? Object.values(config.quizWorkspaces)
+                  : [];
+
+        if (requestedQuizId && workspaces.length === 0) throw new Error(`Unknown MrKwiz quiz workspace: ${requestedQuizId}`);
+        if (workspaces.length === 0) throw new Error('No quiz workspace selected. Pass quiz_id, run from a quiz workspace, or pass all: true.');
+
+        const refreshed = [];
+        for (const workspace of workspaces) {
+            const workspaceTokens = tokenEntriesForWorkspace(workspace);
+            const nextWorkspace: StoredQuizWorkspace = {
+                ...workspace,
+                tokenHashes: uniqueStrings([...workspaceTokenHashes(workspace), ...workspaceTokens.map((entry) => entry.tokenHash)]),
+                updatedAt: now,
+            };
+            config.quizWorkspaces[nextWorkspace.quizId] = nextWorkspace;
+            const materialized = await materializeQuizWorkspace(nextWorkspace);
+            refreshed.push({
+                mcp_names: workspaceTokens.map((entry) => entry.mcpName),
+                quiz_id: nextWorkspace.quizId,
+                quiz_title: nextWorkspace.quizTitle,
+                token_hashes: workspaceTokenHashes(nextWorkspace),
+                workspace_directory: nextWorkspace.workspaceDirectory,
+                workspace_id: nextWorkspace.workspaceId,
+                workspace_plugin: materialized.pluginEntry,
+            });
+        }
+
+        await saveConfig();
+        await debug('Refreshed MrKwiz quiz workspace config.', { all: args.all === true, quiz_id: requestedQuizId ?? null, refreshed });
+
+        return {
+            ok: true,
+            config_file: configFile,
+            note: 'Generated quiz workspace config refreshed. Reopen/restart the affected OpenCode quiz workspace so static MCP config changes are loaded.',
+            refreshed,
         };
     };
 
@@ -1105,6 +1801,16 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     return JSON.stringify(await doPendingRequest(args), null, 2);
                 },
             }),
+            mrkwiz_refresh_quiz_workspace_config: tool({
+                args: {
+                    all: tool.schema.boolean().optional().describe('If true, refresh every stored MrKwiz quiz workspace config.'),
+                    quiz_id: tool.schema.string().optional().describe('Optional quiz id to refresh. Defaults to the current quiz workspace, or the only stored workspace if exactly one exists.'),
+                },
+                description: 'Refresh generated per-quiz OpenCode workspace config, static MCP entries, and ignored token files from machine-local MrKwiz plugin config.',
+                async execute(args) {
+                    return JSON.stringify(await refreshQuizWorkspaceConfig(args), null, 2);
+                },
+            }),
             mrkwiz_get_system_prompt: tool({
                 args: {
                     session_id: tool.schema.string().optional().describe('Optional OpenCode session id. Defaults to the current tool-calling session.'),
@@ -1136,6 +1842,20 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
                     return JSON.stringify(await configureToken(args), null, 2);
                 },
             }),
+            mrkwiz_initialize_quiz_workspace: tool({
+                args: {
+                    base_url: tool.schema.string().optional().describe('MrKwiz site base URL. Defaults to MRKWIZ_BASE_URL or http://localhost:3000.'),
+                    label: tool.schema.string().optional().describe('Optional local label for this MrKwiz MCP token.'),
+                    launch: tool.schema.boolean().optional().describe('If true or omitted, try to warp the current OpenCode session into the quiz workspace.'),
+                    quiz_id: tool.schema.string().describe('MrKwiz quiz id for the machine-local workspace.'),
+                    quiz_title: tool.schema.string().optional().describe('Human-readable quiz title.'),
+                    token: tool.schema.string().describe('Raw MrKwiz MCP token from the admin AI bootstrap page.'),
+                },
+                description: 'Save a MrKwiz MCP token and initialize the machine-local OpenCode workspace for this quiz.',
+                async execute(args, context) {
+                    return JSON.stringify(await initializeQuizWorkspace(args, context.sessionID), null, 2);
+                },
+            }),
             mrkwiz_configure_default_model: tool({
                 args: {
                     model: tool.schema.string().optional().describe('OpenCode model in provider/model format, for example anthropic/claude-sonnet-4-6.'),
@@ -1152,16 +1872,18 @@ export const MrKwizOpenCodePlugin: Plugin = async ({ client, directory }) => {
             if (input.event.type === 'server.connected') await debug('server.connected event received.');
         },
         async "experimental.chat.system.transform"(input, output) {
-            if (!input.sessionID) return;
+            if (!input.sessionID || !Array.isArray(output.system)) return;
             const entry = tokenForSession(input.sessionID);
             if (entry) {
+                const targetDirectory = targetDirectoryForEntry(entry);
                 try {
-                    await ensureMcpReady(entry, 'chat-system-transform');
+                    await ensureMcpReady(entry, 'chat-system-transform', targetDirectory);
                 } catch (error) {
                     await debug('Failed to prepare token MCP during system transform.', {
                         error: error instanceof Error ? error.message : String(error),
                         mcp_name: entry.mcpName,
                         session_id: input.sessionID,
+                        target_directory: targetDirectory,
                         token_hash: entry.tokenHash,
                     });
                 }

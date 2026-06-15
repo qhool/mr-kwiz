@@ -91,10 +91,11 @@ describe('renderMrKwizSkill', () => {
         expect(skill).toContain('mrkwiz_bridge_status');
         expect(skill).toContain('mrkwiz_reset_callback_urls');
         expect(skill).toContain('mrkwiz_do_pending_request');
+        expect(skill).toContain('mrkwiz_refresh_quiz_workspace_config');
         expect(skill).toContain('mrkwiz_get_system_prompt');
         expect(skill).toContain('mrkwiz_get_tool_snapshot');
         expect(skill).toContain('mrkwiz_configure_mcp');
-        expect(skill).toContain('token-specific MCP server');
+        expect(skill).toContain('static token-specific MCP servers');
         expect(skill).toContain('## functions.mrkwiz_get_quiz_context');
     });
 
@@ -111,7 +112,7 @@ describe('renderMrKwizSkill', () => {
         expect(skill).not.toContain('## QuizEditPatch');
     });
 
-    it('renders edit guidance with generated schema docs and every dynamic MCP tool', async () => {
+    it('renders edit guidance with generated schema docs and every MCP tool', async () => {
         const skill = await renderMrKwizSkill('mrkwiz-quiz-edit');
 
         expect(skill).toContain('## QuizEditPatch');

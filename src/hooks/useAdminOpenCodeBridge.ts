@@ -43,21 +43,43 @@ const shouldUseLocalProxy = (): boolean => {
     return isLocalHost(window.location.hostname) || window.location.port === '3000';
 };
 
+const isLocalBaseUrl = (value: string): boolean => {
+    try {
+        const hostname = new URL(value).hostname.toLowerCase();
+        return isLocalHost(hostname) || hostname.startsWith('127.');
+    } catch {
+        return false;
+    }
+};
+
 const buildBootstrapPrompt = (input: {
     baseUrl: string;
     expiresAt: string | null;
     mcpToken: string;
+    quizId: string;
     tokenHash: string;
     quizTitle: string;
 }) => {
     const skillsUrl = `${input.baseUrl}/.well-known/skills/`;
     const mcpUrl = `${input.baseUrl}/mcp`;
+    const localBootstrap = isLocalBaseUrl(input.baseUrl);
+    const pluginConfigEntry = localBootstrap ? '/absolute/path/to/MrKwiz/packages/opencode-plugin/src/index.ts' : '@mrkwiz/opencode-plugin';
+    const initializeWorkspaceCall = JSON.stringify({
+        base_url: input.baseUrl,
+        label: input.quizTitle,
+        launch: true,
+        quiz_id: input.quizId,
+        quiz_title: input.quizTitle,
+        token: input.mcpToken,
+    });
+    const configureMcpCall = JSON.stringify({ base_url: input.baseUrl, label: input.quizTitle, token: input.mcpToken });
 
     return [
         'You are helping me connect OpenCode to my MrKwiz quiz. Please guide me step by step and do not assume I know where config files live.',
         'First load the OpenCode skill named mrkwiz-opencode-setup and follow its setup/testing flow.',
         '',
         `Quiz: ${input.quizTitle}`,
+        `Quiz ID: ${input.quizId}`,
         `MrKwiz site: ${input.baseUrl}`,
         `Hosted MCP URL: ${mcpUrl}`,
         `OpenCode skill URL: ${skillsUrl}`,
@@ -66,14 +88,19 @@ const buildBootstrapPrompt = (input: {
         '',
         'Please do these things:',
         '1. Configure OpenCode to load MrKwiz skills from the skills URL.',
-        '2. Configure OpenCode to install the npm plugin @mrkwiz/opencode-plugin.',
+        localBootstrap
+            ? '2. Configure OpenCode to load the MrKwiz plugin from a local MrKwiz checkout if one exists. Use an absolute path like /absolute/path/to/MrKwiz/packages/opencode-plugin/src/index.ts. Only install/use the npm plugin @mrkwiz/opencode-plugin if no local checkout is available.'
+            : '2. Configure OpenCode to install the npm plugin @mrkwiz/opencode-plugin.',
         '3. If the mrkwiz_configure_default_model tool is available, set the MrKwiz plugin default model to the exact model currently running this bootstrap conversation. Use the provider/model identifier from your system context. This prevents MrKwiz-created sessions from selecting a model I cannot use.',
-        '4. If the mrkwiz_configure_mcp tool is available, call it with the MCP token, base URL, and label below. This saves the token in the MrKwiz OpenCode plugin config and registers a callback URL. The plugin creates a token-specific MCP server and session when the admin page sends an OpenCode action for this token.',
-        '5. If mrkwiz_configure_default_model or mrkwiz_configure_mcp is not available yet, install or fix the plugin first. Do not manually configure the MrKwiz MCP server in opencode.json.',
-        '6. Make sure .opencode/mrkwiz.json is ignored by git and never committed because it contains raw MCP tokens and local model preferences.',
-        '7. Tell me clearly if I need to quit and restart OpenCode for plugin/config changes to take effect.',
-        '8. After the plugin saves this token, refresh the MrKwiz admin Edit page. It should show this token as connected. Clicking Open in OpenCode creates or reuses the token-owned OpenCode session and injects the MCP server name.',
-        '9. Confirm when the MrKwiz admin page should show OpenCode buttons.',
+        '4. If the mrkwiz_initialize_quiz_workspace tool is available, call it with the MCP token, base URL, quiz ID, quiz title, and launch=true. This saves the token in machine-local plugin/workspace config and creates the per-quiz OpenCode workspace with static token-specific MCP entries.',
+        '5. If mrkwiz_initialize_quiz_workspace is not available but mrkwiz_configure_mcp is available, call mrkwiz_configure_mcp as a fallback and tell me I need a plugin update before per-quiz workspace isolation is active.',
+        '6. If mrkwiz_configure_default_model, mrkwiz_initialize_quiz_workspace, or mrkwiz_configure_mcp is not available yet, install or fix the plugin first. Do not manually configure the MrKwiz MCP server in opencode.json.',
+        '7. Raw MCP tokens must only be stored in ignored machine-local MrKwiz plugin/workspace files, never in git-tracked files or directly in opencode.json.',
+        '8. Tell me clearly if I need to quit and restart OpenCode for plugin/config changes to take effect.',
+        '9. After the plugin initializes the workspace, refresh the MrKwiz admin Edit page. It should show this token as connected once the quiz workspace plugin instance registers its callback and the static MCP server is visible. Clicking Open in OpenCode creates or reuses the token-owned OpenCode session and injects the MCP server name.',
+        '10. If mrkwiz_refresh_quiz_workspace_config is available and static MCP config looks stale, call it and tell me to reopen the quiz workspace so OpenCode reloads opencode.json.',
+        '11. Confirm when the MrKwiz admin page should show OpenCode buttons.',
+        localBootstrap ? '12. Because this bootstrap uses local URLs, the per-quiz workspace should use the same MrKwiz plugin entry configured in the user global OpenCode config.' : '',
         '',
         'Recommended OpenCode config shape:',
         '```json',
@@ -81,12 +108,13 @@ const buildBootstrapPrompt = (input: {
             {
                 $schema: 'https://opencode.ai/config.json',
                 skills: { urls: [skillsUrl] },
-                plugin: ['@mrkwiz/opencode-plugin'],
+                plugin: [pluginConfigEntry],
             },
             null,
             2
         ),
         '```',
+        localBootstrap ? 'For local URLs, replace /absolute/path/to/MrKwiz with the actual local MrKwiz checkout path if available.' : '',
         '',
         `MCP token: ${input.mcpToken}`,
         '',
@@ -94,10 +122,13 @@ const buildBootstrapPrompt = (input: {
         'First set the default model to the exact provider/model running this bootstrap conversation, for example:',
         'mrkwiz_configure_default_model({ "model": "provider/model-id-from-your-system-context" })',
         '',
-        'Then save the MCP token:',
-        `mrkwiz_configure_mcp({ "base_url": "${input.baseUrl}", "label": "${input.quizTitle}", "token": "${input.mcpToken}" })`,
+        'Then initialize the per-quiz workspace:',
+        `mrkwiz_initialize_quiz_workspace(${initializeWorkspaceCall})`,
         '',
-        'The plugin status endpoint and callback URLs use only the token hash. The raw token should only be used as bearer auth by the plugin.',
+        'Fallback only if mrkwiz_initialize_quiz_workspace is unavailable:',
+        `mrkwiz_configure_mcp(${configureMcpCall})`,
+        '',
+        'The plugin status endpoint and callback URLs use only the token hash. The raw token should only be used as bearer auth by ignored machine-local plugin/workspace config.',
         '',
         'If any step cannot be completed automatically, explain the exact next step in plain language. If the MCP token is expired, tell me to create a replacement token from the MrKwiz Edit page and paste the new bootstrap prompt.',
     ].join('\n');
@@ -220,6 +251,7 @@ export const useAdminOpenCodeBridge = (adminKey: string | undefined, metadata: A
                 baseUrl: window.location.origin,
                 expiresAt: body.record.expires_at,
                 mcpToken: body.token,
+                quizId: metadata.id,
                 tokenHash: body.record.token_hash,
                 quizTitle: metadata.title,
             });

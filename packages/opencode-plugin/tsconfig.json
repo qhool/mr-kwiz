@@ -5,6 +5,7 @@
     "moduleResolution": "bundler",
     "lib": ["dom", "esnext"],
     "strict": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "types": ["bun", "node"],
     "noEmit": true

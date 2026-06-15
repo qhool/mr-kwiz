@@ -1,6 +1,6 @@
 {
   "name": "@mrkwiz/opencode-plugin",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode bridge plugin for MrKwiz quiz authoring.",
   "type": "module",
   "main": "src/index.ts",
@@ -19,7 +19,7 @@
     "src"
   ],
   "dependencies": {
-    "@opencode-ai/plugin": "latest"
+    "@opencode-ai/plugin": "1.15.13"
   },
   "devDependencies": {
     "@types/bun": "latest",
