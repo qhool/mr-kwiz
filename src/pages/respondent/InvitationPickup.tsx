@@ -56,7 +56,9 @@ const InvitationPickupPage: React.FC = () => {
                     throw new Error(invitationBody.error ?? 'Failed to load invitation.');
                 }
 
-                setPickup(respondentInvitationPickupSchema.parse(invitationBody));
+                const parsedPickup = respondentInvitationPickupSchema.parse(invitationBody);
+                setShareResultsWithInviter(parsedPickup.invitation.result_sharing_mode === 'opt_out');
+                setPickup(parsedPickup);
             } catch (pickupError) {
                 setError(pickupError instanceof Error ? pickupError.message : 'Unknown error.');
             } finally {
@@ -66,14 +68,6 @@ const InvitationPickupPage: React.FC = () => {
 
         void loadInvitation();
     }, [invitationKey]);
-
-    React.useEffect(() => {
-        if (!pickup) {
-            return;
-        }
-
-        setShareResultsWithInviter(pickup.invitation.result_sharing_mode === 'opt_out');
-    }, [pickup]);
 
     const sharingMode = pickup?.invitation.result_sharing_mode ?? 'off';
     const sharebackName = pickup?.invitation.shareback_name.trim() || 'quiz owner';
